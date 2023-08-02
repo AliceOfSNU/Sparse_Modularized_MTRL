@@ -29,7 +29,7 @@ from torchrl.collector.para import AsyncParallelCollector
 from torchrl.collector.para.mt import SingleTaskParallelCollectorBase
 from torchrl.collector.para.async_mt import AsyncSingleTaskParallelCollector
 from torchrl.collector.para.async_mt import AsyncMultiTaskParallelCollectorUniform
-
+from torchrl.collector.para.async_mt_threadlimited import AsyncMultiTaskParallelCollectorUniformN
 from torchrl.replay_buffers.shared import SharedBaseReplayBuffer
 from torchrl.replay_buffers.shared import AsyncSharedReplayBuffer
 import gym
@@ -65,6 +65,11 @@ def experiment(args):
 
     import torch.multiprocessing as mp
     mp.set_start_method('spawn', force=True)
+
+    ####
+    args.worker_nums = 4 #change this val
+    args.eval_worker_nums = 4 #change this val
+    ####
 
     from torchrl.networks.init import normal_init
 
@@ -107,7 +112,8 @@ def experiment(args):
     }
 
     replay_buffer = AsyncSharedReplayBuffer(int(buffer_param['size']),
-            args.worker_nums
+            env.num_tasks
+            #args.worker_nums
     )
     replay_buffer.build_by_example(example_dict)
 
@@ -118,7 +124,7 @@ def experiment(args):
 
     print(env.action_space)
     print(env.observation_space)
-    params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniform(
+    params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniformN(
         env=env, pf=pf, replay_buffer=replay_buffer,
         env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
         device=device,

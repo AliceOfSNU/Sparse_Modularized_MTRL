@@ -15,10 +15,12 @@ downloads/
 eggs/
 .eggs/
 lib/
+log/
 lib64/
 parts/
 sdist/
 var/
+metaworld/
 wheels/
 pip-wheel-metadata/
 share/python-wheels/
