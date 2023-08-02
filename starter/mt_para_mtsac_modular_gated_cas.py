@@ -111,6 +111,7 @@ def experiment(args):
         "embedding_inputs": example_embedding
     }
 
+    print("#tasks: ", env.num_tasks)
     replay_buffer = AsyncSharedReplayBuffer(int(buffer_param['size']),
             env.num_tasks
             #args.worker_nums
@@ -122,8 +123,7 @@ def experiment(args):
     epochs = params['general_setting']['pretrain_epochs'] + \
         params['general_setting']['num_epochs']
 
-    print(env.action_space)
-    print(env.observation_space)
+
     params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniformN(
         env=env, pf=pf, replay_buffer=replay_buffer,
         env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
