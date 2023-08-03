@@ -213,6 +213,7 @@ class AsyncMultiTaskParallelCollectorUniform(AsyncSingleTaskParallelCollector):
         start_barrier, epochs, start_epoch, task_name, shared_dict):
 
         replay_buffer.rebuild_from_tag()
+        print("replay buffer instance: ", id(replay_buffer))
         local_funcs = copy.deepcopy(shared_funcs)
         for key in local_funcs:
             local_funcs[key].to(env_info.device)

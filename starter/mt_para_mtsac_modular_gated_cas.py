@@ -24,6 +24,7 @@ from torchrl.algo import SAC
 from torchrl.algo import TwinSAC
 from torchrl.algo import TwinSACQ
 from torchrl.algo import MTSAC
+from torchrl.collector.mt import MultiTaskCollector
 from torchrl.collector.para import ParallelCollector
 from torchrl.collector.para import AsyncParallelCollector
 from torchrl.collector.para.mt import SingleTaskParallelCollectorBase
@@ -52,7 +53,7 @@ def experiment(args):
         torch.backends.cudnn.deterministic=True
     
     buffer_param = params['replay_buffer']
-
+    print("using device: ", device.type)
     experiment_name = os.path.split( os.path.splitext( args.config )[0] )[-1] if args.id is None \
         else args.id
     logger = Logger( experiment_name , params['env_name'], args.seed, params, args.log_dir )
@@ -66,10 +67,6 @@ def experiment(args):
     import torch.multiprocessing as mp
     mp.set_start_method('spawn', force=True)
 
-    ####
-    args.worker_nums = 4 #change this val
-    args.eval_worker_nums = 4 #change this val
-    ####
 
     from torchrl.networks.init import normal_init
 
@@ -124,17 +121,28 @@ def experiment(args):
         params['general_setting']['num_epochs']
 
 
-    params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniformN(
+    #params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniform(
+    #    env=env, pf=pf, replay_buffer=replay_buffer,
+    #    env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
+    #    device=device,
+    #    reset_idx=True,
+    #    epoch_frames=params['general_setting']['epoch_frames'],
+    #    max_episode_frames=params['general_setting']['max_episode_frames'],
+    #    eval_episodes = params['general_setting']['eval_episodes'],
+    #    worker_nums=args.worker_nums, eval_worker_nums=args.eval_worker_nums,
+    #    train_epochs = epochs, eval_epochs= params['general_setting']['num_epochs']
+    #)
+
+    params['general_setting']['collector'] = MultiTaskCollector(
         env=env, pf=pf, replay_buffer=replay_buffer,
         env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
         device=device,
         reset_idx=True,
         epoch_frames=params['general_setting']['epoch_frames'],
         max_episode_frames=params['general_setting']['max_episode_frames'],
-        eval_episodes = params['general_setting']['eval_episodes'],
-        worker_nums=args.worker_nums, eval_worker_nums=args.eval_worker_nums,
-        train_epochs = epochs, eval_epochs= params['general_setting']['num_epochs']
+        eval_episodes = params['general_setting']['eval_episodes']
     )
+
     params['general_setting']['batch_size'] = int(params['general_setting']['batch_size'])
     params['general_setting']['save_dir'] = osp.join(logger.work_dir,"model")
     agent = MTSAC(

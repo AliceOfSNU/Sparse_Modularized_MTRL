@@ -121,7 +121,7 @@ class AsyncSingleTaskParallelCollector(AsyncParallelCollector):
             'mean_success_rate': mean_success_rate / self.eval_worker_nums
         }
 
-
+    
 class AsyncMultiTaskParallelCollectorUniformN(AsyncSingleTaskParallelCollector):
 
     def __init__(self, progress_alpha=0.1, **kwargs):
@@ -213,6 +213,7 @@ class AsyncMultiTaskParallelCollectorUniformN(AsyncSingleTaskParallelCollector):
         replay_buffer, shared_que,
         start_barrier, epochs, start_epochs, task_names, shared_dict):
         replay_buffer.rebuild_from_tag() #where should this go?
+        print("replay buffer instance: ",id(replay_buffer)) #it's shared buffer, should be equal for all proceesses
 
         local_funcs = copy.deepcopy(shared_funcs)
         for key in local_funcs:
