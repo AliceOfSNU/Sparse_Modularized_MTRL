@@ -65,7 +65,6 @@ class MultiTaskCollector(BaseCollector):
         self.env_cls  = env_cls
         self.env_args = env_args
         self.tasks = list(self.env_cls.keys())
-        print("MT single process collector with:", self.tasks)
         self.task_nums = len(self.tasks)
         self.env_info.task_nums = self.task_nums
         self.active_worker_nums = self.task_nums
@@ -116,6 +115,7 @@ class MultiTaskCollector(BaseCollector):
             self.c_obs[task_idx] = {
                 "ob": env.reset()
             }
+            env.train()
             self.envs.append(env)
             print("built " + task_name)
 
@@ -130,15 +130,15 @@ class MultiTaskCollector(BaseCollector):
 
     @classmethod
     def take_actions(cls, funcs, env_info, ob_info, replay_buffer):
+        # funcs are in eval mode at this stage.(batch_norms are off)
         pf = funcs["pf"]
         ob = ob_info["ob"]
         task_idx = env_info.env_rank
 
         assert isinstance(pf, policies.EmbeddingGuassianContPolicyBase)
 
-        # sample action
-        pf.eval()
-
+        # sample action without grad
+        # no grad because we are only collecting experience off-policy, not training anything..
         with torch.no_grad():
             embedding_input = torch.zeros(env_info.task_nums)
             embedding_input[task_idx] = 1
@@ -187,10 +187,11 @@ class MultiTaskCollector(BaseCollector):
         mean_success_rate = 0 # collect across all envs
         tasks_result = []
 
-        self.pf.eval()
+        self.pf.eval() # batch norm off..
         # iterate over all envs
         for task_idx, env in enumerate(self.eval_envs):
             env.eval()
+            env._reward_scale = 1
 
             task_name = self.tasks[task_idx]
 
@@ -205,7 +206,8 @@ class MultiTaskCollector(BaseCollector):
             # evaluate for certain num of episodes
             for idx in range(self.eval_episodes):
                 if self.reset_idx:
-                    eval_ob = env.reset_with_index(idx)
+                    #eval_ob = env.reset_with_index(idx)
+                    eval_ob = env.reset()
                 else:
                     eval_ob = env.reset()
                 rew = 0
@@ -236,8 +238,6 @@ class MultiTaskCollector(BaseCollector):
             tasks_result.append((task_name, env_success_rate, np.mean(env_eval_rews)))
             self.tasks_progress[task_idx] *= (1 - self.progress_alpha)
             self.tasks_progress[task_idx] += self.progress_alpha * env_success_rate
-            print(self.tasks_progress)
-            
             mean_success_rate += env_success_rate
             eval_rews += env_eval_rews
 
@@ -252,14 +252,10 @@ class MultiTaskCollector(BaseCollector):
 
         dic['eval_rewards']      = eval_rews
         dic['mean_success_rate'] = mean_success_rate / self.task_nums
-
+        self.pf.train() # back to training mode.
         return dic
 
-
-
-
     def train_one_epoch(self):
-        self.pf.train()
 
         # cumulative over all envs.
         train_epoch_reward = 0 
@@ -276,7 +272,8 @@ class MultiTaskCollector(BaseCollector):
             train_rew = self.cached_train_rews[i]
             c_ob = self.c_obs[i]
 
-            # train
+            # collect *epoch_frames frames. under eval_mode and no grad.
+            self.pf.eval()
             for _ in range(self.env_info.epoch_frames):
                 # sample actions
                 next_ob, done, reward, _ = self.__class__.take_actions(self.funcs, self.env_info, c_ob, self.replay_buffer )
@@ -298,6 +295,7 @@ class MultiTaskCollector(BaseCollector):
             self.cached_train_rews[i] = train_rew
             self.c_obs[i] = c_ob
 
+        self.pf.train()
 
         return {
             'train_rewards':train_rews,

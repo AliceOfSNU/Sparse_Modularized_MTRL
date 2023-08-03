@@ -121,27 +121,27 @@ def experiment(args):
         params['general_setting']['num_epochs']
 
 
-    #params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniform(
-    #    env=env, pf=pf, replay_buffer=replay_buffer,
-    #    env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
-    #    device=device,
-    #    reset_idx=True,
-    #    epoch_frames=params['general_setting']['epoch_frames'],
-    #    max_episode_frames=params['general_setting']['max_episode_frames'],
-    #    eval_episodes = params['general_setting']['eval_episodes'],
-    #    worker_nums=args.worker_nums, eval_worker_nums=args.eval_worker_nums,
-    #    train_epochs = epochs, eval_epochs= params['general_setting']['num_epochs']
-    #)
-
-    params['general_setting']['collector'] = MultiTaskCollector(
+    params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniform(
         env=env, pf=pf, replay_buffer=replay_buffer,
         env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
         device=device,
         reset_idx=True,
         epoch_frames=params['general_setting']['epoch_frames'],
         max_episode_frames=params['general_setting']['max_episode_frames'],
-        eval_episodes = params['general_setting']['eval_episodes']
+        eval_episodes = params['general_setting']['eval_episodes'],
+        worker_nums=args.worker_nums, eval_worker_nums=args.eval_worker_nums,
+        train_epochs = epochs, eval_epochs= params['general_setting']['num_epochs']
     )
+
+    #params['general_setting']['collector'] = MultiTaskCollector(
+    #    env=env, pf=pf, replay_buffer=replay_buffer,
+    #    env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
+    #    device=device,
+    #    reset_idx=True,
+    #    epoch_frames=params['general_setting']['epoch_frames'],
+    #    max_episode_frames=params['general_setting']['max_episode_frames'],
+    #    eval_episodes = params['general_setting']['eval_episodes']
+    #)
 
     params['general_setting']['batch_size'] = int(params['general_setting']['batch_size'])
     params['general_setting']['save_dir'] = osp.join(logger.work_dir,"model")
