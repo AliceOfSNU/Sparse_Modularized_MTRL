@@ -5,7 +5,7 @@ import numpy as np
 import torchrl.networks.init as init
 
 class MLPBase(nn.Module):
-    def __init__(self, input_shape, hidden_shapes, activation_func=F.relu, init_func = init.basic_init, last_activation_func = None ):
+    def __init__(self, input_shape, hidden_shapes, activation_func=F.relu, init_func = init.basic_init, last_activation_func = None,):
         super().__init__()
         
         self.activation_func = activation_func
@@ -16,7 +16,7 @@ class MLPBase(nn.Module):
             self.last_activation_func = activation_func
         input_shape = np.prod(input_shape)
 
-        self.output_shape = input_shape
+
         for i, next_shape in enumerate( hidden_shapes ):
             fc = nn.Linear(input_shape, next_shape)
             init_func(fc)

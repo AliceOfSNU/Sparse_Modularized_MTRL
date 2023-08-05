@@ -188,9 +188,9 @@ class TwinSACQ(OffRLAlgo):
         info['Training/qf1_loss'] = qf1_loss.item()
         info['Training/qf2_loss'] = qf2_loss.item()
 
-        info['Training/pf_norm'] = pf_norm
-        info['Training/qf1_norm'] = qf1_norm
-        info['Training/qf2_norm'] = qf2_norm
+        info['Training/pf_norm'] = pf_norm.item()
+        info['Training/qf1_norm'] = qf1_norm.item()
+        info['Training/qf2_norm'] = qf2_norm.item()
 
         info['log_std/mean'] = log_std.mean().item()
         info['log_std/std'] = log_std.std().item()

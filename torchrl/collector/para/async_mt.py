@@ -52,7 +52,6 @@ class AsyncSingleTaskParallelCollector(AsyncParallelCollector):
             for idx in range(env_info.eval_episodes):
                 if reset_idx:
                     eval_ob = env_info.env.reset_with_index(idx)
-                    print("reset_with_idx works??")
                 else:
                     eval_ob = env_info.env.reset()
                 rew = 0
