@@ -46,8 +46,9 @@ class BaseCollector:
         self,
         env, pf, replay_buffer,
         train_render=False,
-        eval_episodes=1,
+        eval_episodes=10,
         eval_render=False,
+        eval_env = None,
         epoch_frames=1000,
         device='cpu',
         max_episode_frames = 999):
@@ -60,8 +61,12 @@ class BaseCollector:
         continuous = isinstance(self.env.action_space, gym.spaces.Box)
         self.train_render = train_render
 
-        self.eval_env = copy.copy(env)
+        if eval_env is None:
+            self.eval_env = copy.copy(env)
+        else:
+            self.eval_env = eval_env
         self.eval_env._reward_scale = 1
+        self.eval_env.eval()
         self.eval_episodes = eval_episodes
         self.eval_render = eval_render
 
@@ -116,7 +121,7 @@ class BaseCollector:
             "acts": act,
             "rewards": [reward],
             "terminals": [done],
-            "time_limits": [True if "time_limit" in info else False]
+            #"time_limits": [True if "time_limit" in info else False]
         }
 
         if done or env_info.current_step >= env_info.max_episode_frames:
@@ -160,31 +165,30 @@ class BaseCollector:
 
         done = False
 
-        self.eval_env = copy.copy(self.env)
-        self.eval_env.eval()
+        #self.eval_env = copy.copy(self.env)
+        #self.eval_env.eval()
         # print(self.eval_env._obs_mean)
-        traj_lens = []
-        for _ in range(self.eval_episodes):
-
-            eval_ob = self.eval_env.reset()
+        success_epi_cnt = 0.0
+        for idx in range(self.eval_episodes):
+            eval_ob = self.eval_env.reset()#this will change goal pos
             rew = 0
-            traj_len = 0
+            success = 0.0
             while not done:
                 act = self.pf.eval_act(torch.Tensor(eval_ob).to(
                     self.device).unsqueeze(0))
-                eval_ob, r, done, _ = self.eval_env.step(act)
+                eval_ob, r, done, info = self.eval_env.step(act)
                 rew += r
-                traj_len += 1
                 if self.eval_render:
                     self.eval_env.render()
+                success = max(success, info["success"])
 
             eval_rews.append(rew)
-            traj_lens.append(traj_len)
+            success_epi_cnt += success
 
             done = False
         
         eval_infos["eval_rewards"] = eval_rews
-        eval_infos["eval_traj_length"] = np.mean(traj_lens)
+        eval_infos["success_rates"] = 1.0*success_epi_cnt/self.eval_episodes
         return eval_infos
 
     def to(self, device):

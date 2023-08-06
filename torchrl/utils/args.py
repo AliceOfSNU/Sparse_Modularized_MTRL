@@ -3,6 +3,18 @@ import json
 
 import torch
 
+tasks = [
+    'reach-v1', 
+    'push-v1', 
+    'pick-place-v1', 
+    'door-v1', 
+    'drawer-open-v1', 
+    'drawer-close-v1', 
+    'button-press-topdown-v1', 
+    'ped-insert-side-v1', 
+    'window-open-v1', 
+    'window-close-v1'
+]
 def get_args():
     parser = argparse.ArgumentParser(description='RL')
     
@@ -46,8 +58,14 @@ def get_args():
     # q function snapshot
     parser.add_argument("--qf2_snap", type=str,   default=None,
                         help="policy snapshot path", )
+    
+    # single env
+    parser.add_argument("--task_id", type=int, default=-1,
+                        help="id(int) of task to train on")
 
     args = parser.parse_args()
+    if args.task_id >= 0: 
+        args.config = f"meta_config/mt1/{tasks[args.task_id]}_sac.json"
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 
