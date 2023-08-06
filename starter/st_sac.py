@@ -52,7 +52,10 @@ def experiment(args):
     buffer_param = params['replay_buffer']
     experiment_name = os.path.split( os.path.splitext( args.config )[0] )[-1] if args.id is None \
         else args.id
-    logger = Logger( experiment_name , params['env_name'], args.seed, params, args.log_dir )
+    tasks = list(cls_dicts.keys())
+    task_name = tasks[args.task_id]
+
+    logger = Logger( experiment_name , task_name, args.seed, params, args.log_dir )
 
     params['general_setting']['env'] = env
     params['general_setting']['logger'] = logger
@@ -69,7 +72,9 @@ def experiment(args):
         qnet_params['hidden_shapes'] = params['net']['q_hidden_shapes']
         del qnet_params['q_hidden_shapes']
         del params['net']['q_hidden_shapes']
-
+    else:
+        qnet_params = params['net']
+        
     pf = policies.GuassianContPolicy(
         input_shape=env.observation_space.shape[0],
         output_shape=2 * env.action_space.shape[0],
@@ -103,8 +108,7 @@ def experiment(args):
 
     epochs = params['general_setting']['pretrain_epochs'] + params['general_setting']['num_epochs']
     
-    tasks = list(cls_dicts.keys())
-    task_name = tasks[args.task_id]
+
     single_env_args = {
                 "task_cls": cls_dicts[task_name],
                 "task_args": copy.deepcopy(cls_args[task_name]),
