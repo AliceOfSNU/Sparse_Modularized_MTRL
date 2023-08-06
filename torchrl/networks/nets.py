@@ -263,6 +263,121 @@ class ModularGatedCascadeCondNet(nn.Module):
             return out, weights, last_weight
         return out
 
+class ModularSelectCascadeNet(nn.Module):
+    def __init__(self, output_shape,
+            base_type, em_input_shape, input_shape,
+            em_hidden_shapes,
+            hidden_shapes,
+
+            num_layers, num_modules,
+
+            module_hidden,
+
+            gating_hidden, num_gating_layers,
+
+            # gated_hidden
+            add_bn = True,
+            pre_softmax = False,
+            cond_ob = True,
+            module_hidden_init_func = init.basic_init,
+            last_init_func = init.uniform_init,
+            activation_func = F.relu,
+             **kwargs ):
+
+        super().__init__()
+
+        self.base = base_type( 
+                        last_activation_func = null_activation,
+                        input_shape = input_shape,
+                        activation_func = activation_func,
+                        hidden_shapes = hidden_shapes,
+                        **kwargs )
+        self.em_base = base_type(
+                        last_activation_func = null_activation,
+                        input_shape = em_input_shape,
+                        activation_func = activation_func,
+                        hidden_shapes = em_hidden_shapes,
+                        **kwargs )
+
+        self.activation_func = activation_func
+
+        module_input_shape = self.base.output_shape
+        self.layer_modules = []
+
+        self.num_layers = num_layers
+        self.num_modules = num_modules
+
+        for i in range(num_layers):
+            layer_module = []
+            for j in range( num_modules ):
+                fc = nn.Linear(module_input_shape, module_hidden)
+                module_hidden_init_func(fc)
+                if add_bn:
+                    module = nn.Sequential(
+                        nn.BatchNorm1d(module_input_shape),
+                        fc,
+                        nn.BatchNorm1d(module_hidden)
+                    )
+                else:
+                    module = fc
+
+                layer_module.append(module)
+                self.__setattr__("module_{}_{}".format(i,j), module)
+
+            module_input_shape = module_hidden
+            self.layer_modules.append(layer_module)
+
+        self.last = nn.Linear(module_input_shape, output_shape)
+        last_init_func( self.last )
+
+        assert self.em_base.output_shape == self.base.output_shape, \
+            "embedding should has the same dimension with base output for gated" 
+        gating_input_shape = self.em_base.output_shape
+        self.gating_fcs = []
+        for i in range(num_gating_layers):
+            gating_fc = nn.Linear(gating_input_shape, gating_hidden)
+            module_hidden_init_func(gating_fc)
+            self.gating_fcs.append(gating_fc)
+            self.__setattr__("gating_fc_{}".format(i), gating_fc)
+            gating_input_shape = gating_hidden
+
+        self.gating_weight_fcs = []
+        self.gating_weight_cond_fcs = []
+
+        self.gating_weight_fc_0 = nn.Linear(gating_input_shape,
+                    num_modules * num_modules )
+        last_init_func( self.gating_weight_fc_0)
+        # self.gating_weight_fcs.append(self.gating_weight_fc_0)
+
+        for layer_idx in range(num_layers-2):
+            gating_weight_cond_fc = nn.Linear((layer_idx+1) * \
+                                               num_modules * num_modules,
+                                              gating_input_shape)
+            module_hidden_init_func(gating_weight_cond_fc)
+            self.__setattr__("gating_weight_cond_fc_{}".format(layer_idx+1),
+                             gating_weight_cond_fc)
+            self.gating_weight_cond_fcs.append(gating_weight_cond_fc)
+
+            gating_weight_fc = nn.Linear(gating_input_shape,
+                                         num_modules * num_modules)
+            last_init_func(gating_weight_fc)
+            self.__setattr__("gating_weight_fc_{}".format(layer_idx+1),
+                             gating_weight_fc)
+            self.gating_weight_fcs.append(gating_weight_fc)
+
+        self.gating_weight_cond_last = nn.Linear((num_layers-1) * \
+                                                 num_modules * num_modules,
+                                                 gating_input_shape)
+        module_hidden_init_func(self.gating_weight_cond_last)
+
+        self.gating_weight_last = nn.Linear(gating_input_shape, num_modules)
+        last_init_func( self.gating_weight_last )
+
+        self.pre_softmax = pre_softmax
+        self.cond_ob = cond_ob
+
+    def forward(x):
+        pass
 
 class FlattenModularGatedCascadeCondNet(ModularGatedCascadeCondNet):
     def forward(self, input, embedding_input, return_weights = False):

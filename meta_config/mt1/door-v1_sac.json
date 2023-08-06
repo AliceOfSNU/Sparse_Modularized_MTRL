@@ -19,7 +19,7 @@
     "general_setting": {
         "discount" : 0.99,
         "pretrain_epochs" : 20,
-        "num_epochs" : 1000,
+        "num_epochs" : 1500,
         "epoch_frames" : 400,
         "max_episode_frames" : 200,
 
