@@ -175,7 +175,6 @@ def generate_single_mt_env(task_cls, task_args, env_rank, num_tasks,
         env = NormAct(env)
     return env
 
-
 def generate_mt10_env(mt_param):
     from metaworld.envs.mujoco.env_dict import EASY_MODE_CLS_DICT, EASY_MODE_ARGS_KWARGS
 

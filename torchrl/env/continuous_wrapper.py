@@ -125,6 +125,7 @@ class TimeLimitAugment(gym.Wrapper):
         return obs, rew, done, info
 
     def reset(self, **kwargs):
+        print("this is a timed env")
         return self.env.reset(**kwargs)
 
 

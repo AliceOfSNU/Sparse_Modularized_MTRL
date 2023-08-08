@@ -58,10 +58,28 @@ fig = plt.figure(figsize=(10,7))
 plt.subplots_adjust(left=0.07, bottom=0.15, right=1, top=0.90,
                 wspace=0, hspace=0)
 
-ax = fig.add_subplot(111)
+ax1 = fig.add_subplot(111)
 colors = current_palette
 color_it = iter(colors)
 for p,f,n in zip(args.paths, args.field_names, args.names):
     print(p, f, n)
     
-compare_experiments(ax, args.paths, args.fields, args.names)
+compare_experiments(ax1, args.paths, args.fields, args.names)
+ax1.set_xlabel('Samples', fontsize=30)
+ax1.tick_params(labelsize=25)
+
+box = ax1.get_position()
+
+leg = ax1.legend(
+           loc='best',
+           ncol=1,
+           fontsize=25)
+
+for legobj in leg.legendHandles:
+    legobj.set_linewidth(10.0)
+
+plt.title("{} {}".format(env_name, args.entry), fontsize=40)
+if not os.path.exists( args.output_dir ):
+    os.mkdir( args.output_dir )
+plt.savefig( os.path.join( args.output_dir, '{}_{}{}.png'.format(env_name, args.entry, args.add_tag) ) )
+plt.close()

@@ -1,0 +1,10 @@
+graph "Module Graph Weights" {
+	node [shape=box]
+	"1_0"
+	"1_1"
+	"0_0" -- "1_0" [label=0.01 color="#FFF7F7" contraint=false fontsize=7 labelfloat=false]
+	"0_0" -- "1_1" [label=0.99 color="#FF3434" contraint=false fontsize=7 labelfloat=false]
+	"0_1" -- "1_0" [label=0.00 color="#FFF9F9" contraint=false fontsize=7 labelfloat=false]
+	"0_1" -- "1_1" [label=1.00 color="#FF3232" contraint=false fontsize=7 labelfloat=false]
+	fontsize=16
+}

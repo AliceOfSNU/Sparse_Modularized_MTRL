@@ -99,7 +99,7 @@ def experiment(args):
         "next_obs": example_ob,
         "acts": env.action_space.sample(),
         "rewards": [0],
-        "terminals": [False]
+        "terminals": [False],
     }
     replay_buffer = SharedBaseReplayBuffer( int(buffer_param['size']), 1)
     replay_buffer.build_by_example(example_dict)
@@ -116,7 +116,7 @@ def experiment(args):
                 "num_tasks": len(tasks),
                 "max_obs_dim": np.prod(env.observation_space.shape),
                 "env_params": params["env"],
-                "meta_env_params": params["meta_env"]
+                "meta_env_params": params["meta_env"],
             }
     if "start_epoch" in single_env_args["task_args"]:
         del single_env_args["task_args"]["start_epoch"]
@@ -126,6 +126,8 @@ def experiment(args):
     eval_env = generate_single_mt_env(**single_env_args)
 
     print("learning on task: ", task_name)
+    #print("_env._max_epi is", env._max_episode_steps)
+    
     params['general_setting']['collector'] = BaseCollector(
         env=env, pf=pf, replay_buffer=replay_buffer,
         device=device,
@@ -145,9 +147,29 @@ def experiment(args):
     )
     agent.train()
 
+tasks = [
+    'reach-v1', 
+    'push-v1', 
+    'pick-place-v1', 
+    'door-v1', 
+    'drawer-open-v1', 
+    'drawer-close-v1', 
+    'button-press-topdown-v1', 
+    'ped-insert-side-v1', 
+    'window-open-v1', 
+    'window-close-v1'
+]
+
+cfg_idxs = [2, 3, 4, 5, 6]
+#if __name__ == "__main__":
+#    for cfg in cfg_idxs:
+#        args.config = f"meta_config/mt1/{tasks[args.task_id]}_sac copy {cfg}.json"
+#        args.seed = cfg+10
+#        params = get_params(args.config)
+#        experiment(args)
+
 if __name__ == "__main__":
     experiment(args)
-
 '''
  CODE NAMES
 1 'reach-v1', 

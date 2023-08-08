@@ -115,6 +115,10 @@ class BaseCollector:
             env_info.env.render()
         env_info.current_step += 1
 
+        if env_info.current_step >= env_info.max_episode_frames:
+            done = False
+            info["time_limit"] = True
+
         sample_dict = { 
             "obs":ob,
             "next_obs": next_ob,
@@ -123,6 +127,10 @@ class BaseCollector:
             "terminals": [done],
             #"time_limits": [True if "time_limit" in info else False]
         }
+
+        # Q function may be corrupted if truncation is not handled proper.
+        if "time_limit" in info:
+            sample_dict["terminals"] = False
 
         if done or env_info.current_step >= env_info.max_episode_frames:
             next_ob = env_info.env.reset()

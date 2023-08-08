@@ -1,0 +1,8 @@
+graph "Module Graph Weights" {
+	node [shape=box]
+	"0_0"
+	"0_1"
+	"1_0"
+	"1_1"
+	fontsize=16
+}

@@ -11,14 +11,17 @@ import torchrl.networks as networks
 from metaworld_utils.meta_env import generate_single_mt_env
 from metaworld_utils.meta_env import get_meta_env
 from torchrl.utils import get_params
-
+import matplotlib.pyplot as plt
 import random
 import imageio
-
+import graphviz
+from pprint import pprint
+from PIL import Image
 
 def evaluate_once(
     task_name:str,
     save_path: str,
+    draw_g_weights= True,
 ):
     # create eval env
     single_env_args = {
@@ -45,45 +48,124 @@ def evaluate_once(
     done = False
     frames = []
     rews = []
+    gwts = []
+    framecnt = 0
     while not done:
         if isinstance(pf, policies.EmbeddingGuassianContPolicyBase):
             embedding_input = torch.zeros(env.num_tasks)
             embedding_input[args.task_id] = 1
-            embedding_input = embedding_input.unsqueeze(0).to(device)
-            act = pf.eval_act( torch.Tensor( eval_ob ).to(device).unsqueeze(0), embedding_input)
+            embedding_input = embedding_input.unsqueeze(0).to(device) 
+            if draw_g_weights:
+                act, weights = pf.eval_act(torch.Tensor( eval_ob ).to(device).unsqueeze(0), embedding_input, return_weights = True)
+                gwts += weights
+            else:
+                act = pf.eval_act( torch.Tensor( eval_ob ).to(device).unsqueeze(0), embedding_input)
         else: 
-            act = pf.eval_act(torch.Tensor(eval_ob).to(device).unsqueeze(0))
+            if draw_g_weights:
+                act, weights = pf.eval_act(torch.Tensor(eval_ob).to(device).unsqueeze(0), return_weights = True)
+                gwts += weights
+            else:
+                act = pf.eval_act(torch.Tensor(eval_ob).to(device).unsqueeze(0))
+        
         eval_ob, r, done, info = eval_env.step(act)
         rew += r
         rews.append(r)
         frame = eval_env.render('rgb_array')
-        frames.append(frame)
+        framecnt += 1
+        if framecnt%2 == 0: frames.append(np.array(frame))
         success = max(success, info["success"])
+    
+    fig = plt.figure(figsize=(5, 1))
+    fig.add_subplot(111)
+
+    plt.plot(rews, label='rewards')
+    fig.canvas.draw()
+
+    # Now we can save it to a numpy array.
+    rew_plt = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    rew_plt = rew_plt.reshape(fig.canvas.get_width_height()[::-1] + (3,))   
+    print(rew_plt.shape)
+    rnd = np.concatenate((frames[0], rew_plt))
+    print(rnd.shape)
+
+    for i, rnd in enumerate(frames):
+        frames[i] = np.concatenate((rnd, rew_plt))
+    
+    # convert to gif and save
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    if draw_g_weights:
+        weights = torch.cat(gwts, 0)
+        weights = weights.detach().cpu().numpy()
+        gframes = _draw_graph_weights(weights, save_path, title=f'weights_{task_name}')
+        gframes = gframes[:len(frames)]
+        w=frames[0].shape[1]
+        h=frames[0].shape[0]
+        gw=gframes[0].shape[1]
+        gh=gframes[0].shape[0]
+        for rnd, gvz in zip(frames, gframes):
+            rnd[:gh, w-gw:]=gvz[:,:]
 
     if success:
         print("environment solved!")
 
-    # convert to gif and save
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
 
     ptx = len(os.listdir(save_path)) + 1
     filename = task_name + "_" + str(ptx) +".gif"
     filename = os.path.join(save_path, filename)
 
-    print(filename)
     eval_env.close()
     del eval_env
     
-    imageio.mimsave(filename, [np.array(fr) for i, fr in enumerate(frames) if i%2 == 0])
+    imageio.mimsave(filename, [fr for i, fr in enumerate(frames) if i%2 == 0])
 
 
 
 # draws network connectivity
-def draw_graph(
-        
+# this function has dependency on 
+def _draw_graph_weights(
+    weights,
+    out_path:str,
+    title:str = "Module_Graph_Weights"
 ):
-    pass
+    frames = []
+    print(os.path.join(out_path, f'{title}.png'))
+    for fr in range(len(weights)):
+        if fr%2: continue
+        G = graphviz.Graph('Module Graph Weights', directory=out_path, filename=f'gw_{title}_generated.gv')
+        G.attr('node', shape='box')
+        for i in range(pf.num_layers-1, 0, -1):
+            for j, module in enumerate(pf.layer_modules[i]):
+                G.node(f'{i}_{j}')
+        
+        for i in range(pf.num_layers-1):
+            for j in range(pf.num_modules):
+                for k in range(pf.num_modules):
+                    w = weights[fr][j][k]
+                    G.edge(f'{i}_{j}', f'{i+1}_{k}', label=f'{w:.2f}',\
+                        color =f"#FF{(int)(250-w*200):02X}{(int)(250-w*200):02X}", fontsize="7", labelfloat = "false", contraint="false")
+        
+        G.attr(fontsize='16')
+        
+        # save output from graphviz
+        png_path = os.path.join(out_path, f'{title}.png')
+        G.render(
+            engine = 'dot',
+            format = 'png',
+            outfile= f'{title}.png'
+        )
+        
+        # make numpy image
+        im_frame = Image.open(png_path).convert('RGB')
+        frames.append(np.array(im_frame))
+
+    # visualize
+    imageio.mimsave(os.path.join(out_path, f'{title}.gif'), frames)
+
+    return frames
+    
+
 
 import argparse
 parser = argparse.ArgumentParser(description='RL')
@@ -136,4 +218,4 @@ model_file = os.path.join(model_path, "model_pf_best.pth")
 pf.load_state_dict(torch.load(model_file))
 pf.to(device)
 # run
-evaluate_once(task_name, out_path)
+evaluate_once(task_name, out_path, draw_g_weights=True)

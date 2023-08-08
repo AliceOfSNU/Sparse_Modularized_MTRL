@@ -302,7 +302,7 @@ class ModularGuassianGatedCascadeCondContPolicy(networks.ModularGatedCascadeCond
         with torch.no_grad():
             if return_weights:
                 # mean, std, log_std, general_weights, last_weights = self.forward(x, embedding_input, return_weights)
-                mean, std, log_std, general_weights = self.forward(x, embedding_input, return_weights)
+                mean, std, log_std, general_weights, last_weights = self.forward(x, embedding_input, return_weights)
             else:
                 mean, std, log_std = self.forward(x, embedding_input, return_weights)
         if return_weights:
