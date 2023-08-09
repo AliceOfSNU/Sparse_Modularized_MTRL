@@ -1,12 +1,11 @@
-# Soft-Module
+# Hard-Module
 
-Implementation for "Multi-task Reinforcement Learning with Soft Modularization"
+Adapted from "Multi-task Reinforcement Learning with Soft Modularization"
 
-Paper Link: [Multi-Task Reinforcement Learning with Soft Modularization](https://arxiv.org/abs/2003.13661)
+Link To Original Authors' Paper: [Multi-Task Reinforcement Learning with Soft Modularization](https://arxiv.org/abs/2003.13661)
 
-![Demo](./fig/method.png)
+![Demo](image.png)
 
-Our project page is at [https://rchalyang.github.io/SoftModule/](https://rchalyang.github.io/SoftModule/)
 
 ## Setup Environment
 
@@ -33,7 +32,14 @@ pip install -e .
 
 ## Our Network Structure
 
+### 
+- Soft Modularization
+  
 See ```ModularGatedCascadeCondNet``` in ```torchrl/networks/nets.py``` for details
+
+- Hard_Modularization
+
+See ```ModularSelectCascadeCondNet``` in ```torchrl/networks/nets.py``` for details
 
 ## Training
 
@@ -89,18 +95,3 @@ To plot the training curves, you could use the following command.
 python torchrl/utils/plot_csv.py --id EXPERIMENTS --env_name mt10 --entry "mean_success_rate" --add_tag POSTFIX_FOR_OUTPUT_FILES --seed SEEDS
 ```
 
-
-## Citation
-
-If you find our work useful, please cite our work.
-
-```
-@misc{yang2020multitask,
-      title={Multi-Task Reinforcement Learning with Soft Modularization}, 
-      author={Ruihan Yang and Huazhe Xu and Yi Wu and Xiaolong Wang},
-      year={2020},
-      eprint={2003.13661},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG}
-}
-```
