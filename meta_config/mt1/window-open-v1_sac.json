@@ -9,7 +9,7 @@
         "random_init": true
     },
     "replay_buffer":{
-        "size": 1e6
+        "size": 1e5
     },
     "net":{ 
         "hidden_shapes": [400, 400],
@@ -20,23 +20,23 @@
         "discount" : 0.99,
         "pretrain_epochs" : 20,
         "num_epochs" : 5000,
-        "epoch_frames" : 200,
+        "epoch_frames" : 500,
         "max_episode_frames" : 200,
 
-        "batch_size" : 128,
+        "batch_size" : 1280,
         "min_pool" : 10000,
 
         "target_hard_update_period" : 1000,
         "use_soft_update" : true,
         "tau" : 0.002,
-        "opt_times" : 200,
+        "opt_times" : 150,
 
         "eval_episodes" : 10
     },
     "sac":{
         
-        "plr" : 2.5e-4,
-        "qlr" : 2.5e-4,
+        "plr" : 3e-4,
+        "qlr" : 3e-4,
         
         "reparameterization": true,
         "automatic_entropy_tuning": true,

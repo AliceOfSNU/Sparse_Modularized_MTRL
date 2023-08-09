@@ -6,6 +6,33 @@
 ```
 estimated training time: 1h for 1m total timesteps (rtx3080 gpu)
 
+#### config file meaning
+the hyperparameter names in json file are quoted.
+
+**main training loop (rlalgo.train())**
+``` python
+    for "num_epochs(5000~7500)":
+        # gather trajectories
+        $1. Collector::train_one_epoch
+            for "epoch_frames(200~400)" * "num_envs(1/10/50)":
+                sample_actions()
+                step_env()
+                replay.add_sample()
+            total_frames += num_envs * epoch_frames
+
+        # update
+        $2. SAC::update_per_epoch
+            for "opt_steps(150-200)":
+                batch = replay.sample_batch() "<- batch_size"
+                SAC::update(batch)
+                - calculate_q,pi losses
+                - optim.step
+
+        # eval
+        $3. Collector::eval_one_epoch
+            for "eval_episodes(~3)":
+                pi.eval()
+```
 #### task ids
 
 | task_id    | task_name |
