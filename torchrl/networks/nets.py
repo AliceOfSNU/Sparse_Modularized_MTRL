@@ -302,13 +302,13 @@ class ModularSelectCascadeNet(nn.Module):
         self.activation_func = activation_func
 
         module_input_shape = self.base.output_shape
-        self.layer_modules = []
+        self.layers = []
 
         self.num_layers = num_layers
         self.num_modules = num_modules
 
         for i in range(num_layers):
-            layer_module = []
+            layer_modules = []
             for j in range( num_modules ):
                 fc = nn.Linear(module_input_shape, module_hidden)
                 module_hidden_init_func(fc)
@@ -321,17 +321,16 @@ class ModularSelectCascadeNet(nn.Module):
                 else:
                     module = fc
 
-                layer_module.append(module)
+                layer_modules.append(module)
                 self.__setattr__("module_{}_{}".format(i,j), module)
 
             module_input_shape = module_hidden
-            self.layer_modules.append(layer_module)
+            self.layers.append(layer_modules)
 
         self.last = nn.Linear(module_input_shape, output_shape)
         last_init_func( self.last )
 
-        assert self.em_base.output_shape == self.base.output_shape, \
-            "embedding should has the same dimension with base output for gated" 
+        
         gating_input_shape = self.em_base.output_shape
         self.gating_fcs = []
         for i in range(num_gating_layers):
@@ -341,45 +340,79 @@ class ModularSelectCascadeNet(nn.Module):
             self.__setattr__("gating_fc_{}".format(i), gating_fc)
             gating_input_shape = gating_hidden
 
-        self.gating_weight_fcs = []
-        self.gating_weight_cond_fcs = []
+        # selecting (router)
+        self.select_fcs = []
+        self.select_cond_fcs = []
 
-        self.gating_weight_fc_0 = nn.Linear(gating_input_shape,
-                    num_modules * num_modules )
-        last_init_func( self.gating_weight_fc_0)
-        # self.gating_weight_fcs.append(self.gating_weight_fc_0)
+        select_fc = nn.Linear(gating_input_shape, self.num_modules)
+        module_hidden_init_func(select_fc)
+        self.select_fcs.append(select_fc)
+        self.__setattr__(f"select_fc_0", select_fc)
 
-        for layer_idx in range(num_layers-2):
-            gating_weight_cond_fc = nn.Linear((layer_idx+1) * \
-                                               num_modules * num_modules,
-                                              gating_input_shape)
-            module_hidden_init_func(gating_weight_cond_fc)
-            self.__setattr__("gating_weight_cond_fc_{}".format(layer_idx+1),
-                             gating_weight_cond_fc)
-            self.gating_weight_cond_fcs.append(gating_weight_cond_fc)
+        for l in range(num_layers):
+            if l == 0: continue
+            select_cond_fc = nn.Linear(self.num_modules, gating_input_shape)
+            module_hidden_init_func(select_cond_fc)
+            self.select_cond_fcs.append(select_cond_fc)
 
-            gating_weight_fc = nn.Linear(gating_input_shape,
-                                         num_modules * num_modules)
-            last_init_func(gating_weight_fc)
-            self.__setattr__("gating_weight_fc_{}".format(layer_idx+1),
-                             gating_weight_fc)
-            self.gating_weight_fcs.append(gating_weight_fc)
+            select_fc = nn.Linear(gating_input_shape, self.num_modules)
+            module_hidden_init_func(select_fc)
+            self.select_fcs.append(select_fc)
 
-        self.gating_weight_cond_last = nn.Linear((num_layers-1) * \
-                                                 num_modules * num_modules,
-                                                 gating_input_shape)
-        module_hidden_init_func(self.gating_weight_cond_last)
-
-        self.gating_weight_last = nn.Linear(gating_input_shape, num_modules)
-        last_init_func( self.gating_weight_last )
+            self.__setattr__(f"select_cond_fc{l}", select_cond_fc)
+            self.__setattr__(f"select_fc_{l}", select_fc)
 
         self.pre_softmax = pre_softmax
         self.cond_ob = cond_ob
 
-    def forward(x):
-        pass
+    def forward(self, x, embedding_input, return_weights = False):
+        out = self.base(x)
+        embedding = self.em_base(embedding_input)
+
+        # common embedding network
+        if len(self.gating_fcs) > 0:
+            for fc in self.gating_fcs[:-1]:
+                embedding = self.activation_func(embedding)
+                embedding = fc(embedding)
+        # last layer embedding is not passed through activation.
+
+        # select module
+        logits = [] #do we need this?
+        selects = []
+        select_input = self.activation_func(embedding)
+        for i in range(self.num_layers):
+            logit = self.select_fcs[i](select_input)
+            logits.append(logit)
+            selects.append(F.gumbel_softmax(logit, 0.1, hard=True, dim=-1))
+            if i == self.num_layers-1: continue
+            select_input = self.activation_func(logit)
+            select_input = self.select_cond_fcs[i](select_input)
+            select_input *= embedding
+            select_input = self.activation_func(select_input)
+
+        # run forward for each module
+        module_input = self.activation_func(out)
+        for l in range(self.num_layers):
+            module_outputs = [module(module_input).unsqueeze(-2) for module in self.layers[l]]
+            out = torch.cat(module_outputs, dim=-2)
+            out = (selects[l].unsqueeze(-1)*out).sum(dim=-2)
+            module_input = self.activation_func(out)
+
+        out = self.last(module_input)
+
+        # return the weights?
+        if return_weights:
+            return (out, logits, selects)
+        return out
+
 
 class FlattenModularGatedCascadeCondNet(ModularGatedCascadeCondNet):
+    def forward(self, input, embedding_input, return_weights = False):
+        out = torch.cat( input, dim = -1 )
+        return super().forward(out, embedding_input, return_weights = return_weights)
+
+
+class FlattenModularSelectCascadeCondNet(ModularSelectCascadeNet):
     def forward(self, input, embedding_input, return_weights = False):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)
