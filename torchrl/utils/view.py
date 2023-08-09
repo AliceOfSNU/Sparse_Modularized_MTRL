@@ -74,7 +74,7 @@ def evaluate_once(
         framecnt += 1
         if framecnt%2 == 0: frames.append(np.array(frame))
         success = max(success, info["success"])
-    
+    print(f"total {framecnt} frames")
     fig = plt.figure(figsize=(5, 1))
     fig.add_subplot(111)
 

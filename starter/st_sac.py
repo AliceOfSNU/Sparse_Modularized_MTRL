@@ -126,7 +126,6 @@ def experiment(args):
     eval_env = generate_single_mt_env(**single_env_args)
 
     print("learning on task: ", task_name)
-    #print("_env._max_epi is", env._max_episode_steps)
     
     params['general_setting']['collector'] = BaseCollector(
         env=env, pf=pf, replay_buffer=replay_buffer,
@@ -172,15 +171,15 @@ if __name__ == "__main__":
     experiment(args)
 '''
  CODE NAMES
-1 'reach-v1', 
-2 'push-v1', 
-3 'pick-place-v1', 
-4 'door-v1', 
-5 'drawer-open-v1', 
-6 'drawer-close-v1', 
-7 'button-press-topdown-v1', 
-8 'ped-insert-side-v1', 
-9 'window-open-v1', 
-10 'window-close-v1'
+0 'reach-v1', 
+1 'push-v1', 
+2 'pick-place-v1', 
+3 'door-v1', 
+4 'drawer-open-v1', 
+5 'drawer-close-v1', 
+6 'button-press-topdown-v1', 
+7 'ped-insert-side-v1', 
+8 'window-open-v1', 
+9 'window-close-v1'
 
 '''
