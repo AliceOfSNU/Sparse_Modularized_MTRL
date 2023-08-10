@@ -36,7 +36,9 @@ class MTSAC(TwinSACQ):
         if self.pf_flag:
             self.sample_key.append("embedding_inputs")
         self.grad_clip = grad_clip
-
+        if "record_weights" in kwargs:
+            self.record_weights = kwargs["record_weights"]
+            
     def update(self, batch):
         self.training_update_num += 1
         obs = batch['obs']
@@ -136,6 +138,11 @@ class MTSAC(TwinSACQ):
                     target_sample_info = self.pf.explore(next_obs,
                                                          embedding_inputs,
                                                          return_log_probs=True)
+                    if self.record_weights:
+                        target_sample_info, pf_info = self.pf.explore(next_obs,
+                                                         embedding_inputs,
+                                                         return_log_probs=True,
+                                                         return_weights=True)
                 else:
                     target_sample_info = self.pf.explore(next_obs,
                                                         return_log_probs=True)
@@ -243,6 +250,10 @@ class MTSAC(TwinSACQ):
             info['Training/pf_norm'] = pf_norm.item()
             info['Training/qf1_norm'] = qf1_norm.item()
             info['Training/qf2_norm'] = qf2_norm.item()
+
+        if self.record_weights:
+            info['Training/hist/pf_selects'] = pf_info["last_weights"].item()
+            #add entropy of choice
 
         info['log_std/mean'] = log_std.mean().item()
         info['log_std/std'] = log_std.std().item()

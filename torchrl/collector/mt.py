@@ -249,7 +249,7 @@ class MultiTaskCollector(BaseCollector):
         for task_name, env_success_rate, env_eval_rews in tasks_result:
             dic[task_name+"_success_rate"] = env_success_rate
             dic[task_name+"_eval_rewards"] = env_eval_rews
-
+    
         dic['eval_rewards']      = eval_rews
         dic['mean_success_rate'] = mean_success_rate / self.task_nums
         self.pf.train() # back to training mode.

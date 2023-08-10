@@ -58,6 +58,26 @@ def update_mean_var_count_from_moments(
     return new_mean, new_var, new_count
 
 
+class NormObsSimp(gym.ObservationWrapper, BaseWrapper):
+    """
+    Normalized Observation => Simple normalization between -1 and 1
+    """
+    def __init__(self, env, clipob=10.):
+        super(NormObsSimp, self).__init__(env)
+        self.dim = self.env.observation_space.shape[0]
+        self.high = self._wrapped_env.observation_space.high
+        self.low = self._wrapped_env.observation_space.low
+        self.mean = (self.high+self.low)/2
+        self.diff = (self.high-self.low)/2
+        self.clipob = clipob
+
+    def observation(self, observation):
+        res = observation[:self.dim]
+        res = np.clip((res-self.mean)/(1e-8 + self.diff), -self.clipob, self.clipob)
+        observation[:self.dim] = res
+        return observation
+    
+
 class NormObs(gym.ObservationWrapper, BaseWrapper):
     """
     Normalized Observation => Optional, Use Momentum
@@ -70,14 +90,20 @@ class NormObs(gym.ObservationWrapper, BaseWrapper):
         self._obs_var = np.ones(env.observation_space.shape[0])
 
     def _update_obs_estimate(self, obs):
+        obs = obs[:self._obs_mean.shape[0]]
         self._obs_mean, self._obs_var, self.count = update_mean_var_count_from_moments(
             self._obs_mean, self._obs_var, self.count, obs, np.zeros_like(obs), 1)
 
     def _apply_normalize_obs(self, raw_obs):
         if self.training:
             self._update_obs_estimate(raw_obs)
+        obs_mean = np.zeros_like(raw_obs)
+        obs_mean[:self._obs_mean.shape[0]] = self._obs_mean
+        obs_var = np.ones_like(raw_obs)
+        obs_var[:self._obs_var.shape[0]] = np.sqrt(self._obs_var) + 1e-8
+
         return np.clip(
-                (raw_obs - self._obs_mean) / (np.sqrt(self._obs_var) + 1e-8),
+                (raw_obs - obs_mean) / obs_var,
                 -self.clipob, self.clipob)
 
     def observation(self, observation):

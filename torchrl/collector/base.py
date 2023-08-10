@@ -118,7 +118,6 @@ class BaseCollector:
         if env_info.current_step >= env_info.max_episode_frames:
             done = False
             info["time_limit"] = True
-            print("step limit reached")
 
         sample_dict = { 
             "obs":ob,
