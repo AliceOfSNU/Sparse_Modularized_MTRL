@@ -150,6 +150,7 @@ if __name__ == "__main__":
 
 '''
  CODE NAMES
+ python starter/st_sac.py  --id MT10_Individual_Tasks --seed 6 --task_id 5
 1 'reach-v1', 
 2 'push-v1', 
 3 'pick-place-v1', 

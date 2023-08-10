@@ -65,8 +65,9 @@ class BaseCollector:
             self.eval_env = copy.copy(env)
         else:
             self.eval_env = eval_env
+            self.eval_env.eval()
+
         self.eval_env._reward_scale = 1
-        self.eval_env.eval()
         self.eval_episodes = eval_episodes
         self.eval_render = eval_render
 
