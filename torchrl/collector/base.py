@@ -116,6 +116,11 @@ class BaseCollector:
             env_info.env.render()
         env_info.current_step += 1
 
+        if env_info.current_step >= env_info.max_episode_frames:
+            done = False
+            info["time_limit"] = True
+            print("step limit reached")
+
         sample_dict = { 
             "obs":ob,
             "next_obs": next_ob,
@@ -124,6 +129,8 @@ class BaseCollector:
             "terminals": [done],
             #"time_limits": [True if "time_limit" in info else False]
         }
+
+            
 
         if done or env_info.current_step >= env_info.max_episode_frames:
             next_ob = env_info.env.reset()
@@ -143,13 +150,13 @@ class BaseCollector:
         self.env.train()
         for _ in range(self.epoch_frames):
             # Sample actions
-            next_ob, done, reward, _ = self.__class__.take_actions(self.funcs,
+            next_ob, done, reward, info = self.__class__.take_actions(self.funcs,
                 self.env_info, self.c_ob, self.replay_buffer )
             self.c_ob["ob"] = next_ob
             # print(self.c_ob)
             self.train_rew += reward
             train_epoch_reward += reward
-            if done:
+            if done or "time_limit" in info:
                 self.training_episode_rewards.append(self.train_rew)
                 train_rews.append(self.train_rew)
                 self.train_rew = 0

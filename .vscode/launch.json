@@ -19,7 +19,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["--config", "meta_config/mt10/stsac.json", "--id", "MT10_Individual_Tasks", "--seed", "3", "--task_id", "1"]
+            "args": [ "--id", "MT10_Individual_Tasks", "--seed", "18", "--task_id", "8"]
         }
     ]
 }
