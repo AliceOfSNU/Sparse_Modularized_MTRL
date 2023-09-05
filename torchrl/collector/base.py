@@ -61,12 +61,14 @@ class BaseCollector:
         continuous = isinstance(self.env.action_space, gym.spaces.Box)
         self.train_render = train_render
 
-        if eval_env is None:
-            self.eval_env = copy.copy(env)
-        else:
-            self.eval_env = eval_env
-        self.eval_env._reward_scale = 1
-        self.eval_env.eval()
+        #uncomment 
+        #if eval_env is None:
+        #    self.eval_env = copy.copy(env)
+        #else:
+        #    self.eval_env = eval_env
+        #self.eval_env._reward_scale = 14
+        #self.eval_env.eval()
+        self.eval_env = None
         self.eval_episodes = eval_episodes
         self.eval_render = eval_render
 

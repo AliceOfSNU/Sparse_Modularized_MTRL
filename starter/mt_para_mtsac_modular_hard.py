@@ -11,7 +11,6 @@ import numpy as np
 
 from torchrl.utils import get_args
 from torchrl.utils import get_params
-from torchrl.env import get_env
 
 from torchrl.utils import Logger
 
@@ -23,7 +22,7 @@ import torchrl.networks as networks
 from torchrl.algo import SAC
 from torchrl.algo import TwinSAC
 from torchrl.algo import TwinSACQ
-from torchrl.algo import MTSAC
+from torchrl.algo import MTSACHARD
 from torchrl.collector.mt import MultiTaskCollector
 from torchrl.replay_buffers.shared import SharedBaseReplayBuffer
 from torchrl.replay_buffers.shared import AsyncSharedReplayBuffer
@@ -66,7 +65,7 @@ def experiment(args):
 
     example_ob = env.reset()
     example_embedding = env.active_task_one_hot
-
+    total_opt_times = params["general_setting"]["num_epochs"]*params["general_setting"]["opt_times"]
     pf = policies.ModularGuassianSelectCascadeContPolicy(
         input_shape=env.observation_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
@@ -139,7 +138,7 @@ def experiment(args):
 
     params['general_setting']['batch_size'] = int(params['general_setting']['batch_size'])
     params['general_setting']['save_dir'] = osp.join(logger.work_dir,"model")
-    agent = MTSAC(
+    agent = MTSACHARD(
         pf = pf,
         qf1 = qf1,
         qf2 = qf2,

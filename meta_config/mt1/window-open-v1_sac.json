@@ -19,16 +19,16 @@
     "general_setting": {
         "discount" : 0.99,
         "pretrain_epochs" : 20,
-        "num_epochs" : 5000,
-        "epoch_frames" : 200,
-        "max_episode_frames" : 200,
+        "num_epochs" : 4000,
+        "epoch_frames" : 300,
+        "max_episode_frames" : 150,
 
         "batch_size" : 128,
         "min_pool" : 10000,
 
         "target_hard_update_period" : 100,
         "use_soft_update" : true,
-        "tau" : 0.001,
+        "tau" : 0.002,
         "opt_times" : 200,
 
         "eval_episodes" : 10

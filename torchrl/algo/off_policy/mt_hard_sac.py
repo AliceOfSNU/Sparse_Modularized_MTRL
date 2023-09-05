@@ -4,10 +4,10 @@ import torch
 import numpy as np
 
 import torchrl.policies as policies
-import torchrl.utils as utils
+import torchrl.algo.utils as utils
 import torch.nn.functional as F
 
-class MTSAC(TwinSACQ):
+class MTSACHARD(TwinSACQ):
     """"
     Support Different Temperature for different tasks
     """
@@ -39,7 +39,9 @@ class MTSAC(TwinSACQ):
         self.grad_clip = grad_clip
         self.record_weights = False
         self.record_weights = record_weights
-            
+        self.temp_schedule = utils.linear_schedule(2.0, 0.2, 20, max(0, self.num_epochs//2 - 20))
+        self.select_temp = 2.0
+
     def update(self, batch):
         self.training_update_num += 1
         obs = batch['obs']
@@ -197,12 +199,9 @@ class MTSAC(TwinSACQ):
         """
         Policy Loss
         """
-        if not self.reparameterization:
-            raise NotImplementedError
-        else:
-            assert log_probs.shape == q_new_actions.shape
-            policy_loss = (reweight_coeff *
-                           (alphas * log_probs - q_new_actions)).mean()
+
+        policy_loss = (reweight_coeff *
+                        (alphas * log_probs - q_new_actions)).mean()
 
         std_reg_loss = self.policy_std_reg_weight * (log_std**2).mean()
         mean_reg_loss = self.policy_mean_reg_weight * (mean**2).mean()
@@ -233,10 +232,12 @@ class MTSAC(TwinSACQ):
 
         self._update_target_networks()
 
+        '''
         # Information For Logger
+        '''
         info = {}
         info['Reward_Mean'] = rewards.mean().item()
-
+        info["Select_Temp"] = self.select_temp
         if self.automatic_entropy_tuning:
             for i in range(self.task_nums):
                 info["alpha_{}".format(i)] = self.log_alpha[i].exp().item()
@@ -280,6 +281,9 @@ class MTSAC(TwinSACQ):
         return info
 
     def update_per_epoch(self):
+        self.select_temp = next(self.temp_schedule)
+        self.qf1.select_temp = self.qf2.select_temp = self.pf.select_temp = self.select_temp
+        
         for _ in range(self.opt_times):
             batch = self.replay_buffer.random_batch(self.batch_size,
                                                     self.sample_key,

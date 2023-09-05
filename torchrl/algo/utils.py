@@ -45,3 +45,12 @@ def update_linear_schedule(optimizer, epoch, total_num_epochs, initial_lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
    
+def linear_schedule(start, end, start_epochs, epochs):
+    dx = (end-start)/epochs
+    curr = start
+    for t in range(start_epochs):
+        yield curr
+    for t in range(epochs):
+        curr += dx
+        yield curr
+    while True: yield end
