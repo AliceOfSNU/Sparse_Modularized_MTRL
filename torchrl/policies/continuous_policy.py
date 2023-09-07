@@ -314,11 +314,11 @@ class ModularGuassianGatedCascadeCondContPolicy(networks.ModularGatedCascadeCond
     def explore( self, x, embedding_input, return_log_probs = False,
                     return_pre_tanh = False, return_weights = False ):
         if return_weights:
-            mean, std, log_std,  general_weights, last_weights = self.forward(x, embedding_input, return_weights)
+            mean, std, log_std,  general_weights, select_cnts = self.forward(x, embedding_input, return_weights)
             # general_weights, last_weights = weights
             dic = {
                 "general_weights": general_weights,
-                "last_weights": last_weights
+                "select_cnts": select_cnts
             }
         else:
             mean, std, log_std = self.forward(x, embedding_input)
@@ -387,11 +387,11 @@ class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, E
     def explore( self, x, embedding_input, return_log_probs = False,
                     return_pre_tanh = False, return_weights = False ):
         if return_weights:
-            mean, std, log_std,  general_weights, last_weights = self.forward(x, embedding_input, return_weights)
+            mean, std, log_std,  general_weights, select_cnts = self.forward(x, embedding_input, return_weights)
             # general_weights, last_weights = weights
             dic = {
                 "general_weights": general_weights,
-                "last_weights": last_weights
+                "select_cnts": select_cnts
             }
         else:
             mean, std, log_std = self.forward(x, embedding_input)

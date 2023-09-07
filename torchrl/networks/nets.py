@@ -302,7 +302,7 @@ class ModularSelectCascadeNet(nn.Module):
 
         self.activation_func = activation_func
         self.select_temp = 1.0
-
+        self.select_desaturation = 1.0
         module_input_shape = self.base.output_shape
         self.layers = []
 
@@ -384,10 +384,11 @@ class ModularSelectCascadeNet(nn.Module):
         select_input = self.activation_func(embedding)
         for i in range(self.num_layers):
             logit = self.select_fcs[i](select_input)
-            logits.append(logit)
-            selects.append(F.gumbel_softmax(logit, self.select_temp, hard=True, dim=-1))
+            logit_select = logit + self.select_desaturation * torch.max(logit).detach().item()
+            logits.append(logit_select)
+            selects.append(F.gumbel_softmax(logit_select, tau=self.select_temp, hard=True, dim=-1))
             if i == self.num_layers-1: continue
-            select_input = self.activation_func(logit)
+            select_input = self.activation_func(logit_select)
             select_input = self.select_cond_fcs[i](select_input)
             select_input *= embedding
             select_input = self.activation_func(select_input)
@@ -405,6 +406,7 @@ class ModularSelectCascadeNet(nn.Module):
 
         # return the weights?
         if return_weights:
+            #logits = [layer_logit.mean(dim = 0).softmax(dim=-1) for layer_logit in logits]
             logits = [layer_logit.mean(dim = 0).softmax(dim=-1) for layer_logit in logits]
             selects = [layer_select.sum(dim = 0) for layer_select in selects]
             return (out, logits, selects)

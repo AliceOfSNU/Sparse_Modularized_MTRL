@@ -109,7 +109,7 @@ class MTSAC(TwinSACQ):
                             (batch_size, self.task_nums))
             log_alphas = log_alphas.unsqueeze(-1)
             # log_alphas = log_alphas.gather(1, task_idx)
-
+            # from dual problem to contraint on average entropy.
             alpha_loss = -(log_alphas *
                            (log_probs + self.target_entropy).detach()).mean()
 
