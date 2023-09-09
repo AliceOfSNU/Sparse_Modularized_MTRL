@@ -142,18 +142,13 @@ class MultiTaskCollector(BaseCollector):
         with torch.no_grad():
             embedding_input = torch.zeros(env_info.task_nums)
             embedding_input[task_idx] = 1
-            embedding_input = embedding_input.unsqueeze(0).to(env_info.device)
-            out = pf.explore(torch.Tensor(ob).to(env_info.device).unsqueeze(0), embedding_input)
+            embedding_input = embedding_input.unsqueeze(0)
+            out = pf.explore(torch.Tensor(ob).to(env_info.device).unsqueeze(0), embedding_input.to(env_info.device))
             act = out["action"]
 
         act = act.detach().cpu().numpy()
         if not env_info.continuous:
             act = act[0]
-
-        if type(act) is not int: # can this ever happen...?
-            if np.isnan(act).any():
-                print("NaN detected. BOOM")
-                exit()
 
         # step env
         next_ob, reward, done, info = env_info.env.step(act)
@@ -161,12 +156,17 @@ class MultiTaskCollector(BaseCollector):
             env_info.env.render()
         env_info.current_step += 1
 
+        # unset done flag on termination by step length.
+        if env_info.current_step >= env_info.max_episode_frames:
+            done = False
+            info["time_limit"] = True
+
         # add to replay
         sample_dict = {
             "obs": ob,
             "next_obs": next_ob,
             "acts": act,
-            "task_idxs": [env_info.env_rank],
+            "task_idxs": [task_idx],
             "rewards": [reward],
             "terminals": [done]
         }
@@ -276,12 +276,14 @@ class MultiTaskCollector(BaseCollector):
             self.pf.eval()
             for _ in range(self.env_info.epoch_frames):
                 # sample actions
-                next_ob, done, reward, _ = self.__class__.take_actions(self.funcs, self.env_info, c_ob, self.replay_buffer )
-                c_ob["ob"] = next_ob
+                next_ob, done, reward, info = self.__class__.take_actions(self.funcs, self.env_info, c_ob, self.replay_buffer )
+                c_ob["ob"] = next_ob #is set to reset'ed obs in case take_action has reached done or max steps.
                 train_rew += reward
                 train_epoch_reward += reward
                 
-                if done:
+                if done or ("time_limit" in info and info["time_limit"]):
+                    #train_rews - sum of rewards for each episode, regardless of task.
+                    #can be multiple entries per task on each exploration epoch. 
                     train_rews.append(train_rew)
                     train_rew = 0
             

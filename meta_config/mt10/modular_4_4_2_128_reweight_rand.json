@@ -15,7 +15,7 @@
         "hidden_shapes": [400, 400],
         "em_hidden_shapes": [400],
         "num_layers": 4,
-        "num_modules": 4,
+        "num_modules": 8,
         "module_hidden": 128,
         "num_gating_layers": 2,
         "gating_hidden": 256,
@@ -25,25 +25,25 @@
     "general_setting": {
         "discount" : 0.99,
         "pretrain_epochs" : 20,
-        "num_epochs" : 7500,
-        "epoch_frames" : 200,
-        "max_episode_frames" : 200,
+        "num_epochs" : 5000,
+        "epoch_frames" : 300,
+        "max_episode_frames" : 150,
 
         "batch_size" : 1280,
         "min_pool" : 10000,
 
         "target_hard_update_period" : 1000,
         "use_soft_update" : true,
-        "tau" : 0.005,
+        "tau" : 0.004,
         "opt_times" : 200,
 
-        "eval_episodes" : 3
+        "eval_episodes" : 5
     },
     "sac":{
         
         "plr" : 3e-4,
         "qlr" : 3e-4,
-        
+        "record_weights": true,
         "reparameterization": true,
         "automatic_entropy_tuning": true,
         "temp_reweight": true,

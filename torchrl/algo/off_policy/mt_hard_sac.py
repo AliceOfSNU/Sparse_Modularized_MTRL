@@ -4,10 +4,10 @@ import torch
 import numpy as np
 
 import torchrl.policies as policies
-import torchrl.utils as utils
+import torchrl.algo.utils as utils
 import torch.nn.functional as F
 
-class MTSAC(TwinSACQ):
+class MTSACHARD(TwinSACQ):
     """"
     Support Different Temperature for different tasks
     """
@@ -39,7 +39,11 @@ class MTSAC(TwinSACQ):
         self.grad_clip = grad_clip
         self.record_weights = False
         self.record_weights = record_weights
-            
+
+        self.temp_schedule = utils.linear_schedule(10.0, 0.2, 20, max(0, self.num_epochs//2 - 20))
+        self.select_temp = 2.0
+        self.desaturation_schedule = utils.linear_schedule(1.0, 0.0, 10, max(0, self.num_epochs//2 - 10))
+
     def update(self, batch):
         self.training_update_num += 1
         obs = batch['obs']
@@ -109,7 +113,7 @@ class MTSAC(TwinSACQ):
                             (batch_size, self.task_nums))
             log_alphas = log_alphas.unsqueeze(-1)
             # log_alphas = log_alphas.gather(1, task_idx)
-            # from dual problem to contraint on average entropy.
+
             alpha_loss = -(log_alphas *
                            (log_probs + self.target_entropy).detach()).mean()
 
@@ -197,12 +201,9 @@ class MTSAC(TwinSACQ):
         """
         Policy Loss
         """
-        if not self.reparameterization:
-            raise NotImplementedError
-        else:
-            assert log_probs.shape == q_new_actions.shape
-            policy_loss = (reweight_coeff *
-                           (alphas * log_probs - q_new_actions)).mean()
+
+        policy_loss = (reweight_coeff *
+                        (alphas * log_probs - q_new_actions)).mean()
 
         std_reg_loss = self.policy_std_reg_weight * (log_std**2).mean()
         mean_reg_loss = self.policy_mean_reg_weight * (mean**2).mean()
@@ -233,9 +234,13 @@ class MTSAC(TwinSACQ):
 
         self._update_target_networks()
 
+        '''
         # Information For Logger
+        '''
         info = {}
         info['Reward_Mean'] = rewards.mean().item()
+        info["Select_Temp"] = self.select_temp
+        info['Select_Desaturation'] = self.select_desaturation
 
         if self.automatic_entropy_tuning:
             for i in range(self.task_nums):
@@ -254,9 +259,9 @@ class MTSAC(TwinSACQ):
             for l in range(self.pf.num_layers):
                 for t in range(self.task_nums):
                     for h in range(self.pf.num_modules):
-                        info["Training/task{0}/pf_logits_{1}_{2}".format(t, l, h)] = target_sample_info["general_weights"][l][t][h].item()
+                        info["Task{0}/pf_logit_{1}_{2}".format(t, l, h)] = target_sample_info["general_weights"][l][t][h].item()
+                        info["Task{0}/cnt_{1}_{2}".format(t, l, h)] = target_sample_info["select_cnts"][l][t][h].item()
             #add entropy of choice
-
         info['log_std/mean'] = log_std.mean().item()
         info['log_std/std'] = log_std.std().item()
         info['log_std/max'] = log_std.max().item()
@@ -280,6 +285,10 @@ class MTSAC(TwinSACQ):
         return info
 
     def update_per_epoch(self):
+        self.select_temp = next(self.temp_schedule)
+        self.qf1.select_temp = self.qf2.select_temp = self.pf.select_temp = self.select_temp
+        self.select_desaturation = next(self.desaturation_schedule)
+        self.qf1.select_desaturation = self.qf2.select_desaturation = self.pf.select_desaturation = self.select_desaturation
         for _ in range(self.opt_times):
             batch = self.replay_buffer.random_batch(self.batch_size,
                                                     self.sample_key,
