@@ -40,7 +40,8 @@ class MTSACHARD(TwinSACQ):
         self.record_weights = False
         self.record_weights = record_weights
 
-        self.temp_schedule = utils.linear_schedule(10.0, 0.2, 20, max(0, self.num_epochs//2 - 20))
+        self.temp_schedule = utils.linear_schedule(2.5, 0.1, 10, self.num_epochs//2)
+        #self.temp_schedule = utils.linear_schedule(5.0, 0.2, 20, max(0, self.num_epochs//2 - 20))
         self.select_temp = 2.0
         self.desaturation_schedule = utils.linear_schedule(1.0, 0.0, 10, max(0, self.num_epochs//2 - 10))
 
@@ -256,11 +257,15 @@ class MTSACHARD(TwinSACQ):
             info['Training/qf2_norm'] = qf2_norm.item()
 
         if self.record_weights:
-            for l in range(self.pf.num_layers):
-                for t in range(self.task_nums):
-                    for h in range(self.pf.num_modules):
-                        info["Task{0}/pf_logit_{1}_{2}".format(t, l, h)] = target_sample_info["general_weights"][l][t][h].item()
-                        info["Task{0}/cnt_{1}_{2}".format(t, l, h)] = target_sample_info["select_cnts"][l][t][h].item()
+            target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
+            target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
+            for t in range(self.task_nums):
+                info["Task{0}/logit/mean".format(t)] = target_sample_info["general_weights"][:,t,:].mean().item()
+                info["Task{0}/logit/max".format(t)] = target_sample_info["general_weights"][:,t,:].max().item()
+                info["Task{0}/logit/min".format(t)] = target_sample_info["general_weights"][:,t,:].min().item()
+                info["Task{0}/cnt/mean".format(t)] = target_sample_info["select_cnts"][:,t,:].mean().item()
+                info["Task{0}/cnt/max".format(t)] = target_sample_info["select_cnts"][:,t,:].max().item()
+                info["Task{0}/cnt/min".format(t)] = target_sample_info["select_cnts"][:,t,:].min().item()
             #add entropy of choice
         info['log_std/mean'] = log_std.mean().item()
         info['log_std/std'] = log_std.std().item()

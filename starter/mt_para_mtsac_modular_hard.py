@@ -111,7 +111,7 @@ def experiment(args):
     params['general_setting']['replay_buffer'] = replay_buffer
 
     epochs = params['general_setting']['pretrain_epochs'] + \
-        params['general_setting']['num_epochs']
+        params['general_setting']['num_epochs'] 
 
 
     #params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniform(

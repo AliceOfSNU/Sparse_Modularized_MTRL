@@ -418,9 +418,9 @@ class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, E
             dic["log_prob"] = log_prob
         else:
             if return_pre_tanh:
-                action, z = dis.rsample( return_pretanh_value = True )
+                action, z = dis.rsample(return_pretanh_value = True)
                 dic["pre_tanh"] = z.squeeze(0)
-            action = dis.rsample( return_pretanh_value = False )
+            action = dis.rsample(return_pretanh_value = False)
 
         dic["action"] = action.squeeze(0)
         return dic

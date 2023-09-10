@@ -249,7 +249,7 @@ class ModularGatedCascadeCondNet(nn.Module):
             for j, layer_module in enumerate(self.layer_modules[i + 1]):
                 module_input = (module_outputs * \
                     weights[i][..., j, :].unsqueeze(-1)).sum(dim=-2)
-
+                # weight outputs pre activation
                 module_input = self.activation_func(module_input)
                 new_module_outputs.append((
                         layer_module(module_input)
@@ -301,7 +301,7 @@ class ModularSelectCascadeNet(nn.Module):
                         **kwargs )
 
         self.activation_func = activation_func
-        self.select_temp = 1.0
+        self.select_temp = 10.0
         self.select_desaturation = 1.0
         module_input_shape = self.base.output_shape
         self.layers = []
@@ -346,23 +346,21 @@ class ModularSelectCascadeNet(nn.Module):
         self.select_fcs = []
         self.select_cond_fcs = []
 
+        for l in range(num_layers-1):
+            select_cond_fc = nn.Linear(self.num_modules**2, gating_input_shape)
+            module_hidden_init_func(select_cond_fc)
+            self.select_cond_fcs.append(select_cond_fc)
+            self.__setattr__(f"select_cond_fc{l+1}", select_cond_fc)
+
+            select_fc = nn.Linear(gating_input_shape, self.num_modules**2)
+            module_hidden_init_func(select_fc)
+            self.select_fcs.append(select_fc)
+            self.__setattr__(f"select_fc_{l+1}", select_fc)
+
         select_fc = nn.Linear(gating_input_shape, self.num_modules)
         module_hidden_init_func(select_fc)
         self.select_fcs.append(select_fc)
-        self.__setattr__(f"select_fc_0", select_fc)
-
-        for l in range(num_layers):
-            if l == 0: continue
-            select_cond_fc = nn.Linear(self.num_modules, gating_input_shape)
-            module_hidden_init_func(select_cond_fc)
-            self.select_cond_fcs.append(select_cond_fc)
-
-            select_fc = nn.Linear(gating_input_shape, self.num_modules)
-            module_hidden_init_func(select_fc)
-            self.select_fcs.append(select_fc)
-
-            self.__setattr__(f"select_cond_fc{l}", select_cond_fc)
-            self.__setattr__(f"select_fc_{l}", select_fc)
+        self.__setattr__(f"select_fc_{num_layers}", select_fc)
 
         self.pre_softmax = pre_softmax
         self.cond_ob = cond_ob
@@ -373,7 +371,7 @@ class ModularSelectCascadeNet(nn.Module):
 
         # common embedding network
         if len(self.gating_fcs) > 0:
-            for fc in self.gating_fcs[:-1]:
+            for fc in self.gating_fcs:
                 embedding = self.activation_func(embedding)
                 embedding = fc(embedding)
         # last layer embedding is not passed through activation.
@@ -382,32 +380,43 @@ class ModularSelectCascadeNet(nn.Module):
         logits = [] #do we need this?
         selects = []
         select_input = self.activation_func(embedding)
-        for i in range(self.num_layers):
-            logit = self.select_fcs[i](select_input)
-            logit_select = logit + self.select_desaturation * torch.max(logit).detach().item()
-            logits.append(logit_select)
-            selects.append(F.gumbel_softmax(logit_select, tau=self.select_temp, hard=True, dim=-1))
-            if i == self.num_layers-1: continue
-            select_input = self.activation_func(logit_select)
-            select_input = self.select_cond_fcs[i](select_input)
-            select_input *= embedding
+
+        # TODO
+        for i in range(self.num_layers-1):
+            logit = self.select_fcs[i](select_input) #last dim is num_modules**2
+            select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
+            logits.insert(0, select)
+            #logit_select = logit + self.select_daesaturation * torch.max(logit).detach().item()
+            selects.insert(0, F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1))
+            select_input = self.select_cond_fcs[i](logit)
+            select_input = select_input*embedding
             select_input = self.activation_func(select_input)
 
-        # run forward for each module
-        module_input = self.activation_func(out)
-        for l in range(self.num_layers):
-            module_outputs = [module(module_input).unsqueeze(-2) for module in self.layers[l]]
-            out = torch.cat(module_outputs, dim=-2)
-            out = (selects[l].unsqueeze(-1)*out).sum(dim=-2)
-            module_input = self.activation_func(out)
+        final_select = self.select_fcs[self.num_layers-1](select_input)
 
-        out = self.last(module_input)
+        # run forward for each module\
+        module_outputs = [module(out).unsqueeze(-2) for module in self.layers[0]]
+        for l in range(self.num_layers-1):
+            module_input = torch.cat(module_outputs, dim=-2)
+            module_outputs = []
+            for m in range(self.num_modules):
+                # broadcasting semantics: starting from last dim(hidden_dim),
+                #   either one dim is 1(the selects!) - dim-1
+                #   or have equal dims(the number of modules!) - dim-2
+                #   or be nonexistant: the batch dim
+                out = (selects[l][..., m,:].unsqueeze(-1)*module_input).sum(dim=-2)
+                # selection is prior to activation.
+                module_outputs.append(self.activation_func(out).unsqueeze(-2))
+                
+        out = torch.cat(module_outputs, dim=-2)
+        out = (final_select.unsqueeze(-1)*out).sum(dim=-2)
+        out = self.last(out)
         
 
         # return the weights?
         if return_weights:
             #logits = [layer_logit.mean(dim = 0).softmax(dim=-1) for layer_logit in logits]
-            logits = [layer_logit.mean(dim = 0).softmax(dim=-1) for layer_logit in logits]
+            logits = [layer_logit.mean(dim = 0) for layer_logit in logits]
             selects = [layer_select.sum(dim = 0) for layer_select in selects]
             return (out, logits, selects)
         return out

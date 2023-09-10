@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Hard-Module Experiment",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [ "--id", "MT10_HARD", "--config", "meta_config/mt10/modular_4_4_2_300_hard.json", "--seed", "18", "--worker_nums", "10", "--eval_worker_nums", "10"]
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
