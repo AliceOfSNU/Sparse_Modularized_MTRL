@@ -66,10 +66,11 @@ class RLAlgo():
         self.training_episode_rewards = deque(maxlen=30)
         self.eval_episodes = eval_episodes
 
-        self.save_interval = save_interval
-        self.save_dir = save_dir
-        if not osp.exists( self.save_dir ):
-            os.mkdir( self.save_dir )
+        if save_dir != None:
+            self.save_interval = save_interval
+            self.save_dir = save_dir
+            if not osp.exists( self.save_dir ):
+                os.mkdir( self.save_dir )
 
         self.best_eval = None
 
@@ -118,7 +119,7 @@ class RLAlgo():
             finish_epoch_info = self.finish_epoch()
 
             eval_start_time = time.time()
-            eval_infos = self.collector.eval_one_epoch()
+            eval_infos = self.evaluate()
             eval_time = time.time() - eval_start_time
 
             total_frames += self.collector.active_worker_nums * self.epoch_frames
@@ -157,6 +158,12 @@ class RLAlgo():
     def update(self, batch):
         raise NotImplementedError
 
+    def evaluate(self):
+        eval_start_time = time.time()
+        eval_infos = self.collector.eval_one_epoch()
+        eval_time = time.time() - eval_start_time
+        return eval_infos
+    
     def _update_target_networks(self):
         if self.use_soft_update:
             for net, target_net in self.target_networks:

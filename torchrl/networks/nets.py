@@ -301,11 +301,12 @@ class ModularSelectCascadeNet(nn.Module):
                         **kwargs )
 
         self.activation_func = activation_func
-        self.select_temp = 10.0
+        self.select_temp = 1.0
         self.select_desaturation = 1.0
+        self.deterministic=False
         module_input_shape = self.base.output_shape
         self.layers = []
-
+        
         self.num_layers = num_layers
         self.num_modules = num_modules
 
@@ -365,6 +366,12 @@ class ModularSelectCascadeNet(nn.Module):
         self.pre_softmax = pre_softmax
         self.cond_ob = cond_ob
 
+    def det(self):
+        self.deterministic = True
+
+    def stoc(self):
+        self.deterministic = False
+
     def forward(self, x, embedding_input, return_weights = False):
         out = self.base(x)
         embedding = self.em_base(embedding_input)
@@ -381,20 +388,67 @@ class ModularSelectCascadeNet(nn.Module):
         selects = []
         select_input = self.activation_func(embedding)
 
-        # TODO
-        for i in range(self.num_layers-1):
-            logit = self.select_fcs[i](select_input) #last dim is num_modules**2
-            select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
-            logits.insert(0, select)
-            #logit_select = logit + self.select_daesaturation * torch.max(logit).detach().item()
-            selects.insert(0, F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1))
-            select_input = self.select_cond_fcs[i](logit)
-            select_input = select_input*embedding
-            select_input = self.activation_func(select_input)
+        #if self.deterministic:
+        if self.deterministic:
+            for i in range(self.num_layers-1):
+                logit = self.select_fcs[i](select_input) #last dim is num_modules**2
+                logit = F.tanh(logit)
 
-        final_select = self.select_fcs[self.num_layers-1](select_input)
+                select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
+                logits.insert(0, select)
 
-        # run forward for each module\
+                # v1: select = choose maximum!!
+                #max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
+                #select = torch.zeros_like(select)
+                #select.scatter_(dim = -1, index = max_select_idx, value = 1)
+
+                # v2: select = hard sampling
+                select = F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1)
+
+                selects.insert(0, select)
+                select_input = self.select_cond_fcs[i](logit)
+                select_input = select_input*embedding
+                select_input = self.activation_func(select_input)
+
+            final_select = self.select_fcs[self.num_layers-1](select_input)
+
+            # v1: select = choose maximum!!
+            #max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
+            #select = torch.zeros_like(select)
+            #select.scatter_(dim = -1, index = max_select_idx, value = 1)
+
+            # v2: select = hard sampling
+            final_select = F.gumbel_softmax(final_select, tau=self.select_temp, hard=False, dim=-1)
+
+        else:
+            for i in range(self.num_layers-1):
+                logit = self.select_fcs[i](select_input) #last dim is num_modules**2
+                logit = F.tanh(logit)
+                select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
+                #select *= 1/self.select_temp # temperature annealing for hard module
+                logits.insert(0, select)
+                #logit_select = logit + self.select_daesaturation * torch.max(logit).detach().item()
+                
+                '''
+                Gumbel-Softmax
+                **expectation** of gumbel-softmax distribution follows that of categorical dist.with same logits
+                up to a reasonable temp(~1.0) then becomes uniform
+                **samples** of gumbel-softmax distribution can be either hard or soft(the hard parameter)
+                and the soft version still is quite peaked up to reasonable (~1.0)temp, then becomes uniform.
+                
+                expecting the logits to trained to become peaked -> because even sampling of modules is likely to be bad.
+                scheduling from 1.0 to 0.02.
+                '''
+                selects.insert(0, F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1))
+                #selects.insert(0, F.softmax(select , dim=-1))
+                select_input = self.select_cond_fcs[i](logit)
+                select_input = select_input*embedding
+                select_input = self.activation_func(select_input)
+
+            final_select = self.select_fcs[self.num_layers-1](select_input)
+            final_select = F.gumbel_softmax(final_select, tau=self.select_temp, hard=False, dim=-1)
+
+        # run forward for each module
         module_outputs = [module(out).unsqueeze(-2) for module in self.layers[0]]
         for l in range(self.num_layers-1):
             module_input = torch.cat(module_outputs, dim=-2)

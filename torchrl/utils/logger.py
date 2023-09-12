@@ -67,9 +67,7 @@ class Logger():
         tabulate_list = [["Name", "Value"]]
         
         for info in infos:
-            if info.find("hist") != -1:
-                self.tf_writer.add_histogram(f"{info}", infos[info], epoch_num)
-                continue
+            if "gumbel" in info: continue
             self.tf_writer.add_scalar( info, infos[info], total_frames )
             tabulate_list.append([ info, "{:.5f}".format( infos[info] ) ])
             if csv_write:
@@ -84,12 +82,10 @@ class Logger():
         tabulate_list.append( ["Name"] + name_list )
 
         for info in self.stored_infos:
+            if "gumbel" in info: continue
             temp_list = [info]
             for name, method in zip( name_list, method_list ):
-                if info.find("hist") != -1:
-                    processed_info=np.mean(self.stored_infos[info], axis=-1)
-                    self.tf_writer.add_histogram(f"{info}", processed_info, epoch_num)
-                    continue
+                
                 processed_info = method(self.stored_infos[info])
                 self.tf_writer.add_scalar( "{}_{}".format( info, name ),
                     processed_info, total_frames )
@@ -98,8 +94,17 @@ class Logger():
                     if epoch_num == 0:
                         csv_titles += ["{}_{}".format(info, name)]
                     csv_values += ["{:.5f}".format(processed_info)]
-
             tabulate_list.append( temp_list )
+
+        tabulate_list.append([])
+        name_list = ["module{}".format(i) for i in range(4)]
+        tabulate_list.append( ["Name"] + name_list )
+        for info in self.stored_infos:
+            if "gumbel" in info:
+                temp_list = [info]
+                temp_list += ["{:.5f}".format(x) for x in np.mean(self.stored_infos[info],axis=0).tolist()]
+                tabulate_list.append( temp_list )
+
         #clear
         self.stored_infos = {}
         if csv_write:

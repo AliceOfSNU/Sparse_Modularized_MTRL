@@ -1,5 +1,6 @@
 from .twin_sac_q import TwinSACQ
 import copy
+import time
 import torch
 import numpy as np
 
@@ -40,9 +41,9 @@ class MTSACHARD(TwinSACQ):
         self.record_weights = False
         self.record_weights = record_weights
 
-        self.temp_schedule = utils.linear_schedule(2.5, 0.1, 10, self.num_epochs//2)
-        #self.temp_schedule = utils.linear_schedule(5.0, 0.2, 20, max(0, self.num_epochs//2 - 20))
-        self.select_temp = 2.0
+        self.temp_schedule = utils.linear_schedule(1.0, 0.02, 10, 500)
+        #self.temp_schedule = utils.linear_schedule(1.0, 0.1, 0, 10)
+        self.select_temp = 1.0
         self.desaturation_schedule = utils.linear_schedule(1.0, 0.0, 10, max(0, self.num_epochs//2 - 10))
 
     def update(self, batch):
@@ -241,12 +242,11 @@ class MTSACHARD(TwinSACQ):
         info = {}
         info['Reward_Mean'] = rewards.mean().item()
         info["Select_Temp"] = self.select_temp
-        info['Select_Desaturation'] = self.select_desaturation
 
-        if self.automatic_entropy_tuning:
-            for i in range(self.task_nums):
-                info["alpha_{}".format(i)] = self.log_alpha[i].exp().item()
-            info["Alpha_loss"] = alpha_loss.item()
+        #if self.automatic_entropy_tuning:
+        #    for i in range(self.task_nums):
+        #        info["alpha_{}".format(i)] = self.log_alpha[i].exp().item()
+        #    info["Alpha_loss"] = alpha_loss.item()
         info['Training/policy_loss'] = policy_loss.item()
         info['Training/qf1_loss'] = qf1_loss.item()
         info['Training/qf2_loss'] = qf2_loss.item()
@@ -259,33 +259,31 @@ class MTSACHARD(TwinSACQ):
         if self.record_weights:
             target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
             target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
-            for t in range(self.task_nums):
-                info["Task{0}/logit/mean".format(t)] = target_sample_info["general_weights"][:,t,:].mean().item()
-                info["Task{0}/logit/max".format(t)] = target_sample_info["general_weights"][:,t,:].max().item()
-                info["Task{0}/logit/min".format(t)] = target_sample_info["general_weights"][:,t,:].min().item()
-                info["Task{0}/cnt/mean".format(t)] = target_sample_info["select_cnts"][:,t,:].mean().item()
-                info["Task{0}/cnt/max".format(t)] = target_sample_info["select_cnts"][:,t,:].max().item()
-                info["Task{0}/cnt/min".format(t)] = target_sample_info["select_cnts"][:,t,:].min().item()
+            for t in range(2):
+                for l in range(2):
+                    for m in range(4):
+                        info["Task{0}_{1}_{2}/gumbel_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
+                        info["Task{0}_{1}_{2}/gumbel_samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
             #add entropy of choice
-        info['log_std/mean'] = log_std.mean().item()
-        info['log_std/std'] = log_std.std().item()
-        info['log_std/max'] = log_std.max().item()
-        info['log_std/min'] = log_std.min().item()
+        #info['log_std/mean'] = log_std.mean().item()
+        #info['log_std/std'] = log_std.std().item()
+        #info['log_std/max'] = log_std.max().item()
+        #info['log_std/min'] = log_std.min().item()
 
-        log_probs_display = log_probs.detach()
-        log_probs_display = (log_probs_display.mean(0)).squeeze(1)
-        for i in range(self.task_nums):
-            info["log_prob_{}".format(i)] = log_probs_display[i].item()
+        #log_probs_display = log_probs.detach()
+        #log_probs_display = (log_probs_display.mean(0)).squeeze(1)
+        #for i in range(self.task_nums):
+        #    info["log_prob_{}".format(i)] = log_probs_display[i].item()
 
-        info['log_probs/mean'] = log_probs.mean().item()
-        info['log_probs/std'] = log_probs.std().item()
-        info['log_probs/max'] = log_probs.max().item()
-        info['log_probs/min'] = log_probs.min().item()
+        #info['log_probs/mean'] = log_probs.mean().item()
+        #info['log_probs/std'] = log_probs.std().item()
+        #info['log_probs/max'] = log_probs.max().item()
+        #info['log_probs/min'] = log_probs.min().item()
 
-        info['mean/mean'] = mean.mean().item()
-        info['mean/std'] = mean.std().item()
-        info['mean/max'] = mean.max().item()
-        info['mean/min'] = mean.min().item()
+        #info['mean/mean'] = mean.mean().item()
+        #info['mean/std'] = mean.std().item()
+        #info['mean/max'] = mean.max().item()
+        #info['mean/min'] = mean.min().item()
 
         return info
 
@@ -300,3 +298,9 @@ class MTSACHARD(TwinSACQ):
                                                     reshape=False)
             infos = self.update(batch)
             self.logger.add_update_info(infos)
+
+    def evaluate(self):
+        eval_start_time = time.time()
+        eval_infos = self.collector.eval_one_epoch()
+        eval_time = time.time() - eval_start_time
+        return eval_infos

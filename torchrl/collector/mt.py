@@ -188,6 +188,7 @@ class MultiTaskCollector(BaseCollector):
         tasks_result = []
 
         self.pf.eval() # batch norm off..
+        self.pf.det()
         # iterate over all envs
         for task_idx, env in enumerate(self.eval_envs):
             env.eval()
@@ -253,6 +254,7 @@ class MultiTaskCollector(BaseCollector):
         dic['eval_rewards']      = eval_rews
         dic['mean_success_rate'] = mean_success_rate / self.task_nums
         self.pf.train() # back to training mode.
+        self.pf.stoc()
         return dic
 
     def train_one_epoch(self):
