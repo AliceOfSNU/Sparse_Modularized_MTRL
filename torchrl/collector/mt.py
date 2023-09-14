@@ -186,7 +186,7 @@ class MultiTaskCollector(BaseCollector):
         eval_rews = [] # collect across all envs
         mean_success_rate = 0 # collect across all envs
         tasks_result = []
-
+        task_wts = []
         self.pf.eval() # batch norm off..
         self.pf.det()
         # iterate over all envs
@@ -204,6 +204,7 @@ class MultiTaskCollector(BaseCollector):
             env_success = 0
             env_eval_rews = []
 
+            weight_tensors = []
             # evaluate for certain num of episodes
             for idx in range(self.eval_episodes):
                 if self.reset_idx:
@@ -218,8 +219,8 @@ class MultiTaskCollector(BaseCollector):
                     embedding_input = torch.zeros(self.task_nums)
                     embedding_input[task_idx] = 1
                     embedding_input = embedding_input.unsqueeze(0).to(self.device)
-                    act = self.pf.eval_act( torch.Tensor( eval_ob ).to(self.device).unsqueeze(0), embedding_input)
-                    
+                    act, gweights = self.pf.eval_act( torch.Tensor( eval_ob ).to(self.device).unsqueeze(0), embedding_input, return_weights = True)
+                    weight_tensors.append(gweights)
                     # step env
                     eval_ob, r, done, info = env.step( act )
                     rew += r
@@ -233,6 +234,7 @@ class MultiTaskCollector(BaseCollector):
                 env_eval_rews.append(rew)
                 done = False
                 env_success += current_success
+
             
             # summarize evaluation for this task
             env_success_rate = env_success / self.eval_episodes
@@ -242,10 +244,17 @@ class MultiTaskCollector(BaseCollector):
             mean_success_rate += env_success_rate
             eval_rews += env_eval_rews
 
+            # for plotting module selections
+            #wt = torch.stack(weight_tensors)
+            #wt = wt.sum(dim = 0) #average across batch do sum!!
+            #task_wts.append(wt)
 
+        
         # in dictionary order of task names:
         tasks_result.sort()
         dic = OrderedDict()
+        #wt = torch.cat(task_wts, dim=-1) #concat tasks as last dim
+        #for i in range(3): dic["wts_{}".format(i)] = wt[i]
 
         for task_name, env_success_rate, env_eval_rews in tasks_result:
             dic[task_name+"_success_rate"] = env_success_rate

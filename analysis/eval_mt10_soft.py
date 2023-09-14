@@ -21,7 +21,7 @@ import torchrl.networks as networks
 from torchrl.algo import SAC
 from torchrl.algo import TwinSAC
 from torchrl.algo import TwinSACQ
-from torchrl.algo import MTSACHARD
+from torchrl.algo import MTSAC
 from torchrl.collector.mt import MultiTaskCollector
 from torchrl.replay_buffers.shared import SharedBaseReplayBuffer
 from torchrl.replay_buffers.shared import AsyncSharedReplayBuffer
@@ -31,61 +31,19 @@ from metaworld_utils.meta_env import get_meta_env
 
 # run
 '''
-    python analysis/eval_mt10_hard.py \
-        --pf_snap log/MT10_Hard/mt10/3/model/model_pf_best.pth \
-        --qf1_snap log/MT10_Hard/mt10/3/model/model_qf1_best.pth \
-        --qf2_snap log/MT10_Hard/mt10/3/model/model_qf2_best.pth \
-        --seed 3 \
-        --id MT10_Hard \
-        --config meta_config/mt10/modular_4_4_2_300_hard.json
         
+    python analysis/eval_mt10_soft.py \
+        --pf_snap log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_pf_best.pth \
+        --qf1_snap log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_qf1_best.pth \
+        --qf2_snap log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_qf2_best.pth \
+        --seed 1 \
+        --id MT10_Conditioned_Modular_Deep \
+        --config meta_config/mt10/modular_4_4_2_128_reweight_rand.json
 '''
 
-def do_eval(agent):
-    eval_infos = agent.evaluate()
-
-    # tabulate
-    #tabulate_list = [["Name", "Value"]]
-    #for info in eval_infos:
-    #    if "_success_rate" not in info:continue
-    #    tabulate_list.append([ info, "{:.5f}".format( eval_infos[info] ) ])
-#
-    #tabulate_list.append([])
-    #print( tabulate(tabulate_list) )
-    
-    import matplotlib
-    import matplotlib.pyplot as plt
-
-    fig = plt.figure(figsize=(30,10))
-
-    ax1 = fig.add_subplot(111)
-    data = eval_infos["wts_2"]#layer wts{l}
-    ax1.pcolor(data.detach().cpu().numpy(), cmap='RdBu')
-    plt.title("Routing Differences 2", fontsize=40)
-    task_names=['reach-v1', 
-        'push-v1', 
-        'pick-place-v1', 
-        'door-v1', 
-        'drawer-open-v1', 
-        'drawer-close-v1', 
-        'button-press-topdown-v1', 
-        'ped-insert-side-v1', 
-        'window-open-v1', 
-        'window-close-v1']
-    ax1.set_xticks(np.arange(0.5, 40 ,4),task_names, rotation=-45)
-    ax1.set_yticks(np.arange(0.5, 4, 1), ["module{}".format(i) for i in range(4)])
-    ax1.set_xlabel("Count of Each Module In (n-1)th Layer Selected, per Task")
-    ax1.set_ylabel("Module in Nth Layer")
-    
-    if not os.path.exists( "./fig" ):
-        os.mkdir( "./fig" )
-    plt.savefig( os.path.join( "./fig", 'routing_layer3.png') ) 
-    plt.close()
-
-
-def do_extract_grads(agent):
+def eval_grads(agent):
     agent.train()
-    pass
+    
 
 # main
 def experiment(args):
@@ -112,16 +70,13 @@ def experiment(args):
 
     params['net']['base_type']=networks.MLPBase
 
-    import torch.multiprocessing as mp
-    mp.set_start_method('spawn', force=True)
-
 
     from torchrl.networks.init import normal_init
 
     example_ob = env.reset()
     example_embedding = env.active_task_one_hot
-    total_opt_times = params["general_setting"]["num_epochs"]*params["general_setting"]["opt_times"]
-    pf = policies.ModularGuassianSelectCascadeContPolicy(
+
+    pf = policies.ModularGuassianGatedCascadeCondContPolicy(
         input_shape=env.observation_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=2 * env.action_space.shape[0],
@@ -130,12 +85,12 @@ def experiment(args):
     if args.pf_snap is not None:
         pf.load_state_dict(torch.load(args.pf_snap, map_location='cpu'))
 
-    qf1 = networks.FlattenModularSelectCascadeCondNet(
+    qf1 = networks.FlattenModularGatedCascadeCondNet(
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1,
         **params['net'])
-    qf2 = networks.FlattenModularSelectCascadeCondNet( 
+    qf2 = networks.FlattenModularGatedCascadeCondNet( 
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1,
@@ -166,8 +121,10 @@ def experiment(args):
     params['general_setting']['replay_buffer'] = replay_buffer
 
     epochs = params['general_setting']['pretrain_epochs'] + \
-        params['general_setting']['num_epochs'] 
-    
+        params['general_setting']['num_epochs']
+
+
+
     params['general_setting']['collector'] = MultiTaskCollector(
         env=env, pf=pf, replay_buffer=replay_buffer,
         env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
@@ -179,17 +136,38 @@ def experiment(args):
     )
 
     params['general_setting']['batch_size'] = int(params['general_setting']['batch_size'])
-    agent = MTSACHARD(
+    params['general_setting']['save_dir'] = None
+    agent = MTSAC(
         pf = pf,
         qf1 = qf1,
         qf2 = qf2,
         task_nums=env.num_tasks,
-
         **params['sac'],
         **params['general_setting']
     )
-    
-    do_eval(agent)
-    #do_extract_grads(agent)
+
+    eval_grads(agent)
+    #eval_infos = agent.evaluate()
+
+    ## tabulate
+    #tabulate_list = [["Name", "Value"]]
+    #for info in eval_infos:
+    #    if "_success_rate" not in info:continue
+    #    tabulate_list.append([ info, "{:.5f}".format( eval_infos[info] ) ])
+
+    #tabulate_list.append([])
+    #print( tabulate(tabulate_list) )
+
 if __name__ == "__main__":
     experiment(args)
+# run
+'''
+        
+    python analysis/eval_mt10_soft.py \
+        --pf_snap log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_pf_best.pth \
+        --qf1_snap log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_qf1_best.pth \
+        --qf2_snap log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_qf2_best.pth \
+        --seed 1 \
+        --id MT10_Conditioned_Modular_Deep \
+        --config meta_config/mt10/modular_4_4_2_128_reweight_rand.json
+'''

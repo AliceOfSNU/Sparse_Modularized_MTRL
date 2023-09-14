@@ -403,7 +403,7 @@ class ModularSelectCascadeNet(nn.Module):
                 #select.scatter_(dim = -1, index = max_select_idx, value = 1)
 
                 # v2: select = hard sampling
-                select = F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1)
+                select = F.gumbel_softmax(select, tau=0.02, hard=False, dim=-1)
 
                 selects.insert(0, select)
                 select_input = self.select_cond_fcs[i](logit)
@@ -472,7 +472,7 @@ class ModularSelectCascadeNet(nn.Module):
             #logits = [layer_logit.mean(dim = 0).softmax(dim=-1) for layer_logit in logits]
             logits = [layer_logit.mean(dim = 0) for layer_logit in logits]
             selects = [layer_select.sum(dim = 0) for layer_select in selects]
-            return (out, logits, selects)
+            return (out, logits, selects) #undo stack, without weight plotting
         return out
 
 

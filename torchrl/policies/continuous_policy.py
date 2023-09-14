@@ -375,12 +375,12 @@ class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, E
         with torch.no_grad():
             if return_weights:
                 # mean, std, log_std, general_weights, last_weights = self.forward(x, embedding_input, return_weights)
-                mean, std, log_std, general_weights, last_weights = self.forward(x, embedding_input, return_weights)
+                mean, std, log_std, gumbel_logits, select_cnts = self.forward(x, embedding_input, return_weights)
             else:
                 mean, std, log_std = self.forward(x, embedding_input, return_weights)
         if return_weights:
             # return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), general_weights, last_weights
-            return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), general_weights
+            return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), select_cnts
         return torch.tanh(mean.squeeze(0)).detach().cpu().numpy()
 
 
