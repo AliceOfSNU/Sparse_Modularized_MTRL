@@ -76,6 +76,7 @@ class MTSACHARD(TwinSACQ):
         self.qf1.train()
         self.qf2.train()
 
+        self.pf.det() #to deterministic mode
         """
         Policy operations.
         """
@@ -89,11 +90,12 @@ class MTSACHARD(TwinSACQ):
             else:
                 sample_info = self.pf.explore(obs, return_log_probs=True, return_weights=self.record_weights)
 
+        self.pf.stoc() #back to sampling mode
         mean = sample_info["mean"]
         log_std = sample_info["log_std"]
         new_actions = sample_info["action"]
         log_probs = sample_info["log_prob"]
-
+        
         if self.idx_flag:
             q1_pred = self.qf1([obs, actions], task_idx)
             q2_pred = self.qf2([obs, actions], task_idx)
@@ -206,12 +208,29 @@ class MTSACHARD(TwinSACQ):
 
         policy_loss = (reweight_coeff *
                         (alphas * log_probs - q_new_actions)).mean()
+        
+        ### IF MIDDLEBOXX
+        grad_info = self.middlebox.per_task_grads(reweight_coeff *
+                        (alphas * log_probs - q_new_actions))
+        
+        info = {}
+        if self.record_weights:
+            target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
+            target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
+            for t in range(2):
+                for l in range(2):
+                    for m in range(4):
+                        info["Task{0}_{1}_{2}/gumbel_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
+                        info["Task{0}_{1}_{2}/gumbel_samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
+        return grad_info
+        ### ENDIF
 
         std_reg_loss = self.policy_std_reg_weight * (log_std**2).mean()
         mean_reg_loss = self.policy_mean_reg_weight * (mean**2).mean()
 
         policy_loss += std_reg_loss + mean_reg_loss
 
+        
         """
         Update Networks
         """
@@ -256,14 +275,7 @@ class MTSACHARD(TwinSACQ):
             info['Training/qf1_norm'] = qf1_norm.item()
             info['Training/qf2_norm'] = qf2_norm.item()
 
-        if self.record_weights:
-            target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
-            target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
-            for t in range(2):
-                for l in range(2):
-                    for m in range(4):
-                        info["Task{0}_{1}_{2}/gumbel_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
-                        info["Task{0}_{1}_{2}/gumbel_samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
+        
             #add entropy of choice
         #info['log_std/mean'] = log_std.mean().item()
         #info['log_std/std'] = log_std.std().item()

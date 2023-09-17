@@ -49,7 +49,7 @@ def do_eval(agent):
     #for info in eval_infos:
     #    if "_success_rate" not in info:continue
     #    tabulate_list.append([ info, "{:.5f}".format( eval_infos[info] ) ])
-#
+    #
     #tabulate_list.append([])
     #print( tabulate(tabulate_list) )
     
@@ -82,10 +82,91 @@ def do_eval(agent):
     plt.savefig( os.path.join( "./fig", 'routing_layer3.png') ) 
     plt.close()
 
+class GradientBox:
+    def __init__(self, optim):
+        self.optim = optim
+        self.objectives = []
 
+    def per_task_grads(self, data):
+        # divide gradients into tasks
+        # input: batch of raw data loss
+        task_grads_info = {}
+        task_losses = data.mean(dim=0).squeeze(0)
+        self.objectives = [*task_losses.chunk(task_losses.shape[0])]
+
+        task_grads_info = self.backward_proc()
+        return task_grads_info
+    
+
+    def backward_proc(self):
+        # run the backwards
+        task_grads, task_shapes = [], []
+        for t, obj in enumerate(self.objectives):
+            self.optim.zero_grad(set_to_none=True)
+            obj.backward(retain_graph=True)
+            grad, shape = self._retrieve_grad()
+            task_grads.append({})
+            for n in grad:
+                task_grads[t][n] = (self._flatten_grad(grad[n], shape[n])) 
+            task_shapes.append(shape)
+
+        # cosine similarity
+        cosines = {n:torch.zeros(len(task_grads), len(task_grads)) for n in task_grads[0]}
+        for ti in range(len(task_grads)):
+            for tj in range(len(task_grads)):
+                for n in task_grads[ti]:
+                    cosines[n][ti, tj] = torch.dot(task_grads[ti][n], task_grads[tj][n])
+        for n in cosines:
+            cosines[n].cpu().detach()
+
+        return {"cosines":cosines, "mags":[]}
+
+    # toolbox from pcgrad
+
+    def _retrieve_grad(self):
+        '''
+        get the gradient of the parameters of the network with specific 
+        objective
+        
+        output:
+        - grad: a list of the gradient of the parameters
+        - shape: a list of the shape of the parameters
+        - has_grad: a list of mask represent whether the parameter has gradient
+        '''
+        
+        grad, shape = {}, {}
+        i,j = 0,0
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                # if p.grad is None: continue
+                # tackle the multi-head scenario
+
+                if p.grad is not None and p.grad.ndim == 2:
+                    if p.grad.shape[0] == 300 and p.grad.shape[1] ==300:
+                        n = "module{}_{}".format(i, j)
+                        shape[n] = p.grad.shape
+                        grad[n] = p.grad.clone()
+                        j = (j+1)%4
+                        if j == 0: i+=1
+                
+        return grad, shape
+
+    def _unflatten_grad(self, grads, shapes):
+        unflatten_grad, idx = [], 0
+        for shape in shapes:
+            length = np.prod(shape)
+            unflatten_grad.append(grads[idx:idx + length].view(shape).clone())
+            idx += length
+        return unflatten_grad
+
+    def _flatten_grad(self, grads, shapes):
+        flatten_grad = torch.cat([g.flatten() for g in grads])
+        return flatten_grad
+    
 def do_extract_grads(agent):
+    agent.middlebox = GradientBox(agent.pf_optimizer)
     agent.train()
-    pass
+    
 
 # main
 def experiment(args):
@@ -189,7 +270,8 @@ def experiment(args):
         **params['general_setting']
     )
     
-    do_eval(agent)
-    #do_extract_grads(agent)
+    #do_eval(agent)
+    do_extract_grads(agent)
+
 if __name__ == "__main__":
     experiment(args)

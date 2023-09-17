@@ -366,6 +366,8 @@ class ModularSelectCascadeNet(nn.Module):
         self.pre_softmax = pre_softmax
         self.cond_ob = cond_ob
 
+        
+
     def det(self):
         self.deterministic = True
 
@@ -398,12 +400,12 @@ class ModularSelectCascadeNet(nn.Module):
                 logits.insert(0, select)
 
                 # v1: select = choose maximum!!
-                #max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
-                #select = torch.zeros_like(select)
-                #select.scatter_(dim = -1, index = max_select_idx, value = 1)
+                max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
+                select = torch.zeros_like(select)
+                select.scatter_(dim = -1, index = max_select_idx, value = 1)
 
                 # v2: select = hard sampling
-                select = F.gumbel_softmax(select, tau=0.02, hard=False, dim=-1)
+                # select = F.gumbel_softmax(select, tau=0.02, hard=False, dim=-1)
 
                 selects.insert(0, select)
                 select_input = self.select_cond_fcs[i](logit)
