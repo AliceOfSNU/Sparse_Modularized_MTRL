@@ -62,7 +62,7 @@ def _sigmoid(x: torch.Tensor, hard: bool=True, threshold:float=0.5):
         soft_sig = torch.sigmoid(x)
         ret = torch.where(soft_sig > threshold, 1.0, 0.0)
         ## straight through - let gradient flow
-        ret = ret - soft_sig.detach() + soft_sig
+        ret = ret - x.detach() + x
     else: ret = torch.functional.sigmoid(x)
     return ret
 

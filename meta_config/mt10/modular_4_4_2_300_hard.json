@@ -16,14 +16,14 @@
         "em_hidden_shapes": [400],
         "num_layers": 4,
         "num_modules": 4,
-        "module_hidden": 300,
+        "module_hidden": 256,
         "num_gating_layers": 2,
         "gating_hidden": 256,
-        "add_bn": true
+        "add_bn": false
     },
     "general_setting": {
         "discount" : 0.99,
-        "pretrain_epochs" : 5,
+        "pretrain_epochs" : 20,
         "num_epochs" : 5000,
         "epoch_frames" : 300,
         "max_episode_frames" : 150,

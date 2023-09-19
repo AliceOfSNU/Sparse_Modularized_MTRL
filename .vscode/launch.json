@@ -11,6 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "subProcess": false,
             "args": [ "--id", "MT10_HARD", "--config", "meta_config/mt10/modular_4_4_2_300_hard.json", "--seed", "18", "--worker_nums", "10", "--eval_worker_nums", "10"]
         },
         {
@@ -20,6 +21,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "subProcess": false,
             "args": ["--id", "MT10_HARD", "--config", "meta_config/mt10/modular_4_4_2_300_hard.json", "--seed", "3", "--worker_nums", "10", "--eval_worker_nums", "10", "--pf_snap", "log/MT10_Hard/mt10/3/model/model_pf_3400.pth", "--qf1_snap", "log/MT10_Hard/mt10/3/model/model_qf1_3400.pth","--qf2_snap", "log/MT10_Hard/mt10/3/model/model_qf2_3400.pth"]
         },
         {
