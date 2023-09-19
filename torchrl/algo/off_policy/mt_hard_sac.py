@@ -262,8 +262,8 @@ class MTSACHARD(TwinSACQ):
             for t in range(2):
                 for l in range(2):
                     for m in range(4):
-                        info["Task{0}_{1}_{2}/gumbel_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
-                        info["Task{0}_{1}_{2}/gumbel_samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
+                        info["Task{0}_{1}_{2}/mean_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
+                        info["Task{0}_{1}_{2}/selection_cnts".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
             #add entropy of choice
         #info['log_std/mean'] = log_std.mean().item()
         #info['log_std/std'] = log_std.std().item()
@@ -288,10 +288,10 @@ class MTSACHARD(TwinSACQ):
         return info
 
     def update_per_epoch(self):
-        self.select_temp = next(self.temp_schedule)
-        self.qf1.select_temp = self.qf2.select_temp = self.pf.select_temp = self.select_temp
-        self.select_desaturation = next(self.desaturation_schedule)
-        self.qf1.select_desaturation = self.qf2.select_desaturation = self.pf.select_desaturation = self.select_desaturation
+        #self.select_temp = next(self.temp_schedule)
+        #self.qf1.select_temp = self.qf2.select_temp = self.pf.select_temp = self.select_temp
+        #self.select_desaturation = next(self.desaturation_schedule)
+        #self.qf1.select_desaturation = self.qf2.select_desaturation = self.pf.select_desaturation = self.select_desaturation
         for _ in range(self.opt_times):
             batch = self.replay_buffer.random_batch(self.batch_size,
                                                     self.sample_key,

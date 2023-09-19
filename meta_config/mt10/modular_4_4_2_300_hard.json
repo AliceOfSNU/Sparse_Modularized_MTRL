@@ -19,12 +19,11 @@
         "module_hidden": 300,
         "num_gating_layers": 2,
         "gating_hidden": 256,
-        "add_bn": false,
-        "pre_softmax": false
+        "add_bn": true
     },
     "general_setting": {
         "discount" : 0.99,
-        "pretrain_epochs" : 20,
+        "pretrain_epochs" : 5,
         "num_epochs" : 5000,
         "epoch_frames" : 300,
         "max_episode_frames" : 150,

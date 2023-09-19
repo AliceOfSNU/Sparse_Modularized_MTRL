@@ -84,7 +84,7 @@ def do_eval(agent):
 
 
 def do_extract_grads(agent):
-    agent.train()
+    #agent.train()
     pass
 
 # main
