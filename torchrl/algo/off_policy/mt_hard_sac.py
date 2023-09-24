@@ -213,6 +213,7 @@ class MTSACHARD(TwinSACQ):
         grad_info = self.middlebox.per_task_grads(reweight_coeff *
                         (alphas * log_probs - q_new_actions))
         
+        
         info = {}
         if self.record_weights:
             target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
@@ -220,10 +221,9 @@ class MTSACHARD(TwinSACQ):
             for t in range(2):
                 for l in range(2):
                     for m in range(4):
-                        info["Task{0}_{1}_{2}/gumbel_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
-                        info["Task{0}_{1}_{2}/gumbel_samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
-        return grad_info
-        ### ENDIF
+                        info["Task{0}_{1}_{2}/logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
+                        info["Task{0}_{1}_{2}/samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
+
 
         std_reg_loss = self.policy_std_reg_weight * (log_std**2).mean()
         mean_reg_loss = self.policy_mean_reg_weight * (mean**2).mean()
@@ -310,6 +310,9 @@ class MTSACHARD(TwinSACQ):
                                                     reshape=False)
             infos = self.update(batch)
             self.logger.add_update_info(infos)
+
+        if self.middlebox:
+            self.middlebox.end_epoch()
 
     def evaluate(self):
         eval_start_time = time.time()

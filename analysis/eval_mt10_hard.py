@@ -4,11 +4,14 @@ sys.path.append(".")
 import os
 import os.path as osp
 import random
+import copy
 
 # external dependencies
 import numpy as np
 import torch
 from tabulate import tabulate
+import matplotlib
+import matplotlib.pyplot as plt
 
 # custom dependencies
 from torchrl.utils import get_args
@@ -27,7 +30,16 @@ from torchrl.replay_buffers.shared import SharedBaseReplayBuffer
 from torchrl.replay_buffers.shared import AsyncSharedReplayBuffer
 
 from metaworld_utils.meta_env import get_meta_env
-
+task_names=['reach-v1', 
+    'push-v1', 
+    'pick-place-v1', 
+    'door-v1', 
+    'drawer-open-v1', 
+    'drawer-close-v1', 
+    'button-press-topdown-v1', 
+    'ped-insert-side-v1', 
+    'window-open-v1', 
+    'window-close-v1']
 
 # run
 '''
@@ -62,16 +74,6 @@ def do_eval(agent):
     data = eval_infos["wts_2"]#layer wts{l}
     ax1.pcolor(data.detach().cpu().numpy(), cmap='RdBu')
     plt.title("Routing Differences 2", fontsize=40)
-    task_names=['reach-v1', 
-        'push-v1', 
-        'pick-place-v1', 
-        'door-v1', 
-        'drawer-open-v1', 
-        'drawer-close-v1', 
-        'button-press-topdown-v1', 
-        'ped-insert-side-v1', 
-        'window-open-v1', 
-        'window-close-v1']
     ax1.set_xticks(np.arange(0.5, 40 ,4),task_names, rotation=-45)
     ax1.set_yticks(np.arange(0.5, 4, 1), ["module{}".format(i) for i in range(4)])
     ax1.set_xlabel("Count of Each Module In (n-1)th Layer Selected, per Task")
@@ -83,31 +85,60 @@ def do_eval(agent):
     plt.close()
 
 class GradientBox:
-    def __init__(self, optim):
+    def __init__(self, net, optim):
         self.optim = optim
+        self.net = net
         self.objectives = []
+        self.grad_infos = []
+        self.grad_epoch_infos = None
+        self.epoch_cnt = 0
 
     def per_task_grads(self, data):
         # divide gradients into tasks
         # input: batch of raw data loss
-        task_grads_info = {}
+        task_grad_info = {}
         task_losses = data.mean(dim=0).squeeze(0)
         self.objectives = [*task_losses.chunk(task_losses.shape[0])]
 
-        task_grads_info = self.backward_proc()
-        return task_grads_info
+        task_grad_info = self.backward_proc()
+        self.update_cnt += 1
+        if self.grad_epoch_infos == None:
+            self.grad_epoch_infos = task_grad_info
+        else:
+            self.grad_epoch_infos["cosines"] += task_grad_info["cosines"]
     
+    def end_epoch(self):
+        self.grad_epoch_infos["cosines"] /= self.update_cnt #average it out
+        self.grad_infos.append(self.grad_epoch_infos)
 
+        if self.epoch_cnt % 10 == 0 or self.epoch_cnt < 10:
+            fig = plt.figure(figsize=(10,7))
+            ax1 = fig.subplots()
+            ax1.pcolor(self.grad_epoch_infos["cosine"].cpu())
+            plt.title('task gradients covariance (epoch{})'.format(self.epoch_cnt))
+            ax1.set_xticks(np.arange(0.5, 10 ,1),task_names, rotation=-45, fontsize=20)
+            ax1.set_yticks(np.arange(0.5, 10, 1),task_names, rotation=-45, fontsize=20)
+
+            # good! save
+            if not os.path.exists( "./fig/grads" ):
+                os.mkdir( "./fig/grads" )
+            plt.savefig( os.path.join( "./fig/grads", 'cosines_epoch{}.png'.format(self.epoch_cnt)) ) 
+            plt.close()
+
+        # reset and advance epoch
+        self.grad_epoch_infos = None # clear!
+        self.update_cnt = 0
+        self.epoch_cnt += 1
+        
     def backward_proc(self):
         # run the backwards
+        # list containing vec(grad) and its shape, for each task.(length = #tasks)
         task_grads, task_shapes = [], []
         for t, obj in enumerate(self.objectives):
             self.optim.zero_grad(set_to_none=True)
             obj.backward(retain_graph=True)
             grad, shape = self._retrieve_grad()
-            task_grads.append({})
-            for n in grad:
-                task_grads[t][n] = (self._flatten_grad(grad[n], shape[n])) 
+            task_grads[t] = {n:self._flatten_grad(g, shape[n]) for n, g in grad.items()}
             task_shapes.append(shape)
 
         # cosine similarity
@@ -119,35 +150,30 @@ class GradientBox:
         for n in cosines:
             cosines[n].cpu().detach()
 
+
+        self.optim.zero_grad(set_to_none=True) # we don't need to step on these gradients
         return {"cosines":cosines, "mags":[]}
 
-    # toolbox from pcgrad
-
     def _retrieve_grad(self):
-        '''
-        get the gradient of the parameters of the network with specific 
-        objective
-        
-        output:
-        - grad: a list of the gradient of the parameters
-        - shape: a list of the shape of the parameters
-        - has_grad: a list of mask represent whether the parameter has gradient
-        '''
-        
         grad, shape = {}, {}
-        i,j = 0,0
-        for group in self.optim.param_groups:
-            for p in group['params']:
-                # if p.grad is None: continue
-                # tackle the multi-head scenario
+        #i,j = 0,0
+        #for group in self.optim.param_groups:
+        #    for p in group['params']:
+        #        # if p.grad is None: continue
+        #        if p.grad is not None and p.grad.ndim == 2:
+        #            if p.grad.mo:
+        #                n = "module{}_{}".format(i, j)
+        #                shape[n] = p.grad.shape
+        #                grad[n] = p.grad.clone()
+        #                j = (j+1)%4
+        #                if j == 0: i+=1
 
-                if p.grad is not None and p.grad.ndim == 2:
-                    if p.grad.shape[0] == 300 and p.grad.shape[1] ==300:
-                        n = "module{}_{}".format(i, j)
-                        shape[n] = p.grad.shape
-                        grad[n] = p.grad.clone()
-                        j = (j+1)%4
-                        if j == 0: i+=1
+        for l in range(self.net.num_layers):
+            for m in range(self.net.num_modules):
+                name = "module_{}_{}".format(l,m)
+                grad = getattr(name).grad.clone()
+                grad[name] = grad
+                shape[name] = grad.shape
                 
         return grad, shape
 
@@ -164,7 +190,7 @@ class GradientBox:
         return flatten_grad
     
 def do_extract_grads(agent):
-    agent.middlebox = GradientBox(agent.pf_optimizer)
+    agent.middlebox = GradientBox(agent.pf, agent.pf_optimizer)
     agent.train()
     
 
