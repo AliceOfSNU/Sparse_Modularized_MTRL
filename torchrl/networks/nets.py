@@ -57,6 +57,9 @@ class FlattenNet(Net):
 def null_activation(x):
     return x
 
+'''
+router linear-combines module outputs based on softmax weights. 
+'''
 class ModularGatedCascadeCondNet(nn.Module):
     def __init__(self, output_shape,
             base_type, em_input_shape, input_shape,
@@ -70,7 +73,7 @@ class ModularGatedCascadeCondNet(nn.Module):
             gating_hidden, num_gating_layers,
             
             # gated_hidden
-            add_bn = True,
+            add_bn = False,
             pre_softmax = False,
             cond_ob = True,
             module_hidden_init_func = init.basic_init,
@@ -81,12 +84,20 @@ class ModularGatedCascadeCondNet(nn.Module):
 
         super().__init__()
 
+        
         self.base = base_type( 
                         last_activation_func = null_activation,
                         input_shape = input_shape,
                         activation_func = activation_func,
                         hidden_shapes = hidden_shapes,
                         **kwargs )
+        #if add_bn:
+        #    self.base = nn.Sequential(
+        #        nn.BatchNorm1d(input_shape),
+        #        self.base,
+        #        nn.BatchNorm1d(hidden_shapes[-1])
+        #    )
+
         self.em_base = base_type(
                         last_activation_func = null_activation,
                         input_shape = em_input_shape,
@@ -131,6 +142,14 @@ class ModularGatedCascadeCondNet(nn.Module):
         for i in range(num_gating_layers):
             gating_fc = nn.Linear(gating_input_shape, gating_hidden)
             module_hidden_init_func(gating_fc)
+            if add_bn:
+                module = nn.Sequential(
+                    nn.BatchNorm1d(gating_input_shape),
+                    gating_fc,
+                    nn.BatchNorm1d(gating_hidden)
+                )
+            else:
+                module = gating_fc
             self.gating_fcs.append(gating_fc)
             self.__setattr__("gating_fc_{}".format(i), gating_fc)
             gating_input_shape = gating_hidden
@@ -265,6 +284,13 @@ class ModularGatedCascadeCondNet(nn.Module):
             return out, weights, last_weight
         return out
 
+
+
+'''
+router network selects one module from each layer to use.
+special options:
+    - cond_ob : use state information in routing?
+'''
 class ModularSelectCascadeNet(nn.Module):
     def __init__(self, output_shape,
             base_type, em_input_shape, input_shape,
@@ -366,8 +392,6 @@ class ModularSelectCascadeNet(nn.Module):
         self.pre_softmax = pre_softmax
         self.cond_ob = cond_ob
 
-        
-
     def det(self):
         self.deterministic = True
 
@@ -377,7 +401,9 @@ class ModularSelectCascadeNet(nn.Module):
     def forward(self, x, embedding_input, return_weights = False):
         out = self.base(x)
         embedding = self.em_base(embedding_input)
-
+        if self.cond_ob:    
+            embedding = embedding * out #conditioning on obs
+        out = self.activation_func(out)
         # common embedding network
         if len(self.gating_fcs) > 0:
             for fc in self.gating_fcs:
@@ -394,20 +420,20 @@ class ModularSelectCascadeNet(nn.Module):
         if self.deterministic:
             for i in range(self.num_layers-1):
                 logit = self.select_fcs[i](select_input) #last dim is num_modules**2
-                logit = F.tanh(logit)
+                logit = F.softmax(logit)
 
                 select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
-                logits.insert(0, select)
+                logits.append(select)
 
                 # v1: select = choose maximum!!
-                max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
-                select = torch.zeros_like(select)
-                select.scatter_(dim = -1, index = max_select_idx, value = 1)
+                #max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
+                #select = torch.zeros_like(select)
+                #select.scatter_(dim = -1, index = max_select_idx, value = 1)
 
                 # v2: select = hard sampling
-                # select = F.gumbel_softmax(select, tau=0.02, hard=False, dim=-1)
+                select = F.gumbel_softmax(select, tau=0.02, hard=False, dim=-1)
 
-                selects.insert(0, select)
+                selects.append(select)
                 select_input = self.select_cond_fcs[i](logit)
                 select_input = select_input*embedding
                 select_input = self.activation_func(select_input)
@@ -428,7 +454,7 @@ class ModularSelectCascadeNet(nn.Module):
                 logit = F.tanh(logit)
                 select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
                 #select *= 1/self.select_temp # temperature annealing for hard module
-                logits.insert(0, select)
+                logits.append(select)
                 #logit_select = logit + self.select_daesaturation * torch.max(logit).detach().item()
                 
                 '''
@@ -441,7 +467,7 @@ class ModularSelectCascadeNet(nn.Module):
                 expecting the logits to trained to become peaked -> because even sampling of modules is likely to be bad.
                 scheduling from 1.0 to 0.02.
                 '''
-                selects.insert(0, F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1))
+                selects.append(F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1))
                 #selects.insert(0, F.softmax(select , dim=-1))
                 select_input = self.select_cond_fcs[i](logit)
                 select_input = select_input*embedding
@@ -451,7 +477,7 @@ class ModularSelectCascadeNet(nn.Module):
             final_select = F.gumbel_softmax(final_select, tau=self.select_temp, hard=False, dim=-1)
 
         # run forward for each module
-        module_outputs = [module(out).unsqueeze(-2) for module in self.layers[0]]
+        module_outputs = [self.activation_func(module(out)).unsqueeze(-2) for module in self.layers[0]]
         for l in range(self.num_layers-1):
             module_input = torch.cat(module_outputs, dim=-2)
             module_outputs = []
@@ -461,8 +487,9 @@ class ModularSelectCascadeNet(nn.Module):
                 #   or have equal dims(the number of modules!) - dim-2
                 #   or be nonexistant: the batch dim
                 out = (selects[l][..., m,:].unsqueeze(-1)*module_input).sum(dim=-2)
+                out = self.layers[l+1][m](self.activation_func(out))
                 # selection is prior to activation.
-                module_outputs.append(self.activation_func(out).unsqueeze(-2))
+                module_outputs.append(out.unsqueeze(-2))
                 
         out = torch.cat(module_outputs, dim=-2)
         out = (final_select.unsqueeze(-1)*out).sum(dim=-2)
@@ -478,13 +505,201 @@ class ModularSelectCascadeNet(nn.Module):
         return out
 
 
+'''
+router network whether or not to use specific module in a layer.
+special options:
+    - cond_ob : use state information in routing?
+'''
+class ModularThresholdActivationCondNet(nn.Module):
+    def __init__(self, output_shape,
+            base_type, em_input_shape, input_shape,
+            em_hidden_shapes,
+            hidden_shapes,
+            num_layers, num_modules,
+            module_hidden,
+            gating_hidden, num_gating_layers,
+            # options
+            cond_ob = True,
+            #lasso = False,
+            #lasso_weight = 0.3,
+            add_bn = True,
+            module_hidden_init_func = init.basic_init,
+            last_init_func = init.uniform_init,
+            activation_func = F.relu,
+             **kwargs ):
+
+        super().__init__()
+
+        # common networks at beginning
+        self.base = base_type( 
+                        last_activation_func = null_activation,
+                        input_shape = input_shape,
+                        activation_func = activation_func,
+                        hidden_shapes = hidden_shapes,
+                        **kwargs )
+        self.em_base = base_type(
+                        last_activation_func = null_activation,
+                        input_shape = em_input_shape,
+                        activation_func = activation_func,
+                        hidden_shapes = em_hidden_shapes,
+                        **kwargs )
+
+        self.activation_func = activation_func
+        module_input_shape = self.base.output_shape
+        self.layers = []
+        self.num_layers = num_layers
+        self.num_modules = num_modules
+
+        # modularized main network
+        for i in range(num_layers):
+            layer_modules = []
+            for j in range( num_modules ):
+                fc = nn.Linear(module_input_shape, module_hidden)
+                module_hidden_init_func(fc)
+                if add_bn:
+                    module = nn.Sequential(
+                        nn.BatchNorm1d(module_input_shape),
+                        fc,
+                        nn.BatchNorm1d(module_hidden)
+                    )
+                else:
+                    module = fc
+
+                layer_modules.append(module)
+                self.__setattr__("module_{}_{}".format(i,j), module)
+
+            module_input_shape = module_hidden
+            self.layers.append(layer_modules)
+
+        # last common layer, output_shape = action_space_dim * 2(mean/var)
+        self.last = nn.Linear(module_input_shape, output_shape)
+        last_init_func( self.last )
+
+        # gating common layers.
+        gating_input_shape = self.em_base.output_shape
+        self.gating_fcs = []
+        for i in range(num_gating_layers):
+            gating_fc = nn.Linear(gating_input_shape, gating_hidden)
+            module_hidden_init_func(gating_fc)
+            self.gating_fcs.append(gating_fc)
+            self.__setattr__("gating_fc_{}".format(i), gating_fc)
+            gating_input_shape = gating_hidden
+
+        # routing network
+        self.select_fcs = []
+        self.select_cond_fcs = []
+
+        for l in range(1, num_layers):
+            # outputs selection logits
+            select_fc = nn.Linear(gating_input_shape, self.num_modules**2)
+            module_hidden_init_func(select_fc)
+            self.select_fcs.append(select_fc)
+            self.__setattr__(f"select_fc_{l}", select_fc)
+
+            # embeds all prev layers' choice history.
+            select_cond_fc = nn.Linear(l*self.num_modules**2, gating_input_shape)
+            module_hidden_init_func(select_cond_fc)
+            self.select_cond_fcs.append(select_cond_fc)
+            self.__setattr__(f"select_cond_fc{l}", select_cond_fc)
+
+        # final selection
+        select_fc = nn.Linear(gating_input_shape, self.num_modules)
+        module_hidden_init_func(select_fc)
+        self.select_fcs.append(select_fc)
+        self.__setattr__(f"select_fc_final", select_fc)
+
+        self.cond_ob = cond_ob
+
+
+    def forward(self, x, embedding_input, return_weights = False):
+        out = self.base(x)
+        embedding = self.em_base(embedding_input)
+        if self.cond_ob:
+            embedding = embedding * out #conditioning on obs
+        out = self.activation_func(out) #activation on OUT must come after cond_ob.(preserve sgn info)
+        # common embedding network
+        if len(self.gating_fcs) > 0:
+            for fc in self.gating_fcs:
+                embedding = torch.tanh(embedding)
+                embedding = fc(embedding)
+        # last layer embedding is not passed through activation.
+
+        # routers
+        logits = []
+        selects_flattened = []
+        selects = []
+        select_input = torch.tanh(embedding)
+
+        for i in range(self.num_layers-1):
+            logit = self.select_fcs[i](select_input) #last dim is num_modules**2
+            logit = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
+            logits.append(logit)
+
+            softmax = torch.softmax(logit, dim=-1)
+            select = utils._threshold(softmax, 0.8)
+            # where all weights are below threshold, replace with argmax
+            #select_argmax = utils._argmax(softmax)
+            #select = torch.where(select_threshold.sum(dim=-1, keepdim=True) < 1e-3, select_argmax, select_threshold)
+            selects.append(select)
+            
+            selects_flattened.append(select.flatten(start_dim=-2))
+            flattened_selects = torch.cat(selects_flattened, dim=-1)
+
+            
+            select_input = self.select_cond_fcs[i](flattened_selects)
+            select_input = select_input*embedding
+            select_input = self.activation_func(select_input)
+
+        final_logits = self.select_fcs[self.num_layers-1](select_input)
+        final_select = utils._threshold(torch.softmax(final_logits, dim=-1), 0.8)
+        #final_argmax = utils._argmax(final_logits)
+        #final_select = torch.where(final_sigmoid.sum(dim=-1, keepdim=True) < 1e-3, final_argmax, final_sigmoid)
+            
+        # run forward for each module
+        module_outputs = [module(out).unsqueeze(-2) for module in self.layers[0]]
+        for l in range(self.num_layers-1):
+            module_input = torch.cat(module_outputs, dim=-2)
+            module_outputs = []
+            for m in range(self.num_modules):
+                # broadcasting semantics: starting from last dim(hidden_dim),
+                #   either one dim is 1(the selects!) - dim-1
+                #   or have equal dims(the number of modules!) - dim-2
+                #   or be nonexistant: the batch dim
+                out = (selects[l][..., m,:].unsqueeze(-1)*module_input).sum(dim=-2)
+                out = self.layers[l+1][m](self.activation_func(out))
+                # selection is prior to activation.
+                module_outputs.append(out.unsqueeze(-2))
+                
+        out = torch.cat(module_outputs, dim=-2)
+        out = (final_select.unsqueeze(-1)*out).sum(dim=-2)
+        out = self.activation_func(out)
+        out = self.last(out)
+        
+
+        # return the weights?
+        if return_weights:
+            #logits = [layer_logit.mean(dim = 0).softmax(dim=-1) for layer_logit in logits]
+            logits = [layer_logit.mean(dim = 0) for layer_logit in logits]
+            selects = [layer_select.sum(dim = 0) for layer_select in selects]
+            return (out, logits, selects) #undo stack, without weight plotting
+        return out
+
+
+'''
+REGION
+Flattened input versions
+'''
 class FlattenModularGatedCascadeCondNet(ModularGatedCascadeCondNet):
     def forward(self, input, embedding_input, return_weights = False):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)
 
-
 class FlattenModularSelectCascadeCondNet(ModularSelectCascadeNet):
+    def forward(self, input, embedding_input, return_weights = False):
+        out = torch.cat( input, dim = -1 )
+        return super().forward(out, embedding_input, return_weights = return_weights)
+
+class FlattenModularThresholdActivationCondNet(ModularThresholdActivationCondNet):
     def forward(self, input, embedding_input, return_weights = False):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)
@@ -519,3 +734,6 @@ class FlattenBootstrappedNet(BootstrappedNet):
     def forward(self, input, idx ):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, idx)
+
+def _backward_cb(grad):
+    pass
