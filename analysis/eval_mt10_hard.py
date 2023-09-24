@@ -91,7 +91,8 @@ class GradientBox:
         self.objectives = []
         self.grad_infos = []
         self.grad_epoch_infos = None
-        self.epoch_cnt = 0
+        self.update_cnt = 0 #counts #of backwards call
+        self.epoch_cnt = 0 #counts #of epochs for logging
 
     def per_task_grads(self, data):
         # divide gradients into tasks
@@ -105,25 +106,33 @@ class GradientBox:
         if self.grad_epoch_infos == None:
             self.grad_epoch_infos = task_grad_info
         else:
-            self.grad_epoch_infos["cosines"] += task_grad_info["cosines"]
+            for k in task_grad_info:
+                for name in task_grad_info[k]:
+                    self.grad_epoch_infos[k][name] += task_grad_info[k][name]
     
     def end_epoch(self):
-        self.grad_epoch_infos["cosines"] /= self.update_cnt #average it out
+        for k in self.grad_epoch_infos:
+            for name in self.grad_epoch_infos[k]:
+                self.grad_epoch_infos[k][name] /= self.update_cnt #average it out
         self.grad_infos.append(self.grad_epoch_infos)
 
-        if self.epoch_cnt % 10 == 0 or self.epoch_cnt < 10:
-            fig = plt.figure(figsize=(10,7))
-            ax1 = fig.subplots()
-            ax1.pcolor(self.grad_epoch_infos["cosine"].cpu())
-            plt.title('task gradients covariance (epoch{})'.format(self.epoch_cnt))
-            ax1.set_xticks(np.arange(0.5, 10 ,1),task_names, rotation=-45, fontsize=20)
-            ax1.set_yticks(np.arange(0.5, 10, 1),task_names, rotation=-45, fontsize=20)
+        for name in self.grad_epoch_infos["cosine"]:
+            if self.epoch_cnt % 10 == 0 or self.epoch_cnt < 10:
+                fig, (ax1,ax2)= plt.subplots(1, 2)
+                ax1.pcolor(self.grad_epoch_infos["cosine"][name].cpu())
+                ax1.set_xticks(np.arange(0.5, 10 ,1),task_names, rotation=-45, fontsize=20)
+                ax1.set_yticks(np.arange(0.5, 10, 1),task_names, rotation=-45, fontsize=20)
 
-            # good! save
-            if not os.path.exists( "./fig/grads" ):
-                os.mkdir( "./fig/grads" )
-            plt.savefig( os.path.join( "./fig/grads", 'cosines_epoch{}.png'.format(self.epoch_cnt)) ) 
-            plt.close()
+                ax2.pcolor(self.grad_epoch_infos["mags"][name].cpu())
+                ax2.set_xticks(np.arange(0.5, 10 ,1),task_names, rotation=-45, fontsize=20)
+                ax2.set_yticks(np.arange(0.5, 10, 1),task_names, rotation=-45, fontsize=20)
+
+                # good! save
+                plt.title('task gradients COV (epoch{}, {})'.format(self.epoch_cnt,name))
+                if not os.path.exists( "./fig/grads" ):
+                    os.mkdir( "./fig/grads" )
+                plt.savefig( os.path.join( "./fig/grads", 'cosines_epoch{}_{}.png'.format(self.epoch_cnt, name)) ) 
+                plt.close()
 
         # reset and advance epoch
         self.grad_epoch_infos = None # clear!
@@ -138,7 +147,7 @@ class GradientBox:
             self.optim.zero_grad(set_to_none=True)
             obj.backward(retain_graph=True)
             grad, shape = self._retrieve_grad()
-            task_grads[t] = {n:self._flatten_grad(g, shape[n]) for n, g in grad.items()}
+            task_grads.append({n:self._flatten_grad(g, shape[n]) for n, g in grad.items()})
             task_shapes.append(shape)
 
         # cosine similarity
@@ -150,9 +159,21 @@ class GradientBox:
         for n in cosines:
             cosines[n].cpu().detach()
 
+        # magnitude similarity - harmonic mean
+        
+        mags = {n:torch.zeros(len(task_grads), len(task_grads)) for n in task_grads[0]}
+        for ti in range(len(task_grads)):
+            for tj in range(len(task_grads)):
+                for n in task_grads[ti]:
+                    n1 = torch.norm(task_grads[ti][n])
+                    n2 = torch.norm(task_grads[tj][n])
+                    mags[n][ti, tj] = n1*n2/(1e-8+n1+n2)
+        for n in mags:
+            mags[n].cpu().detach()
+        
 
         self.optim.zero_grad(set_to_none=True) # we don't need to step on these gradients
-        return {"cosines":cosines, "mags":[]}
+        return {"cosines":cosines, "mags":mags}
 
     def _retrieve_grad(self):
         grad, shape = {}, {}
@@ -171,9 +192,9 @@ class GradientBox:
         for l in range(self.net.num_layers):
             for m in range(self.net.num_modules):
                 name = "module_{}_{}".format(l,m)
-                grad = getattr(name).grad.clone()
-                grad[name] = grad
-                shape[name] = grad.shape
+                g = getattr(self.net,name).weight.grad.clone()
+                grad[name] = g
+                shape[name] = g.shape
                 
         return grad, shape
 
@@ -228,7 +249,7 @@ def experiment(args):
     example_ob = env.reset()
     example_embedding = env.active_task_one_hot
     total_opt_times = params["general_setting"]["num_epochs"]*params["general_setting"]["opt_times"]
-    pf = policies.ModularGuassianSelectCascadeContPolicy(
+    pf = policies.ModularGuassianThresholdActivationContPolicy(
         input_shape=env.observation_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=2 * env.action_space.shape[0],
@@ -237,12 +258,12 @@ def experiment(args):
     if args.pf_snap is not None:
         pf.load_state_dict(torch.load(args.pf_snap, map_location='cpu'))
 
-    qf1 = networks.FlattenModularSelectCascadeCondNet(
+    qf1 = networks.FlattenModularThresholdActivationCondNet(
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1,
         **params['net'])
-    qf2 = networks.FlattenModularSelectCascadeCondNet( 
+    qf2 = networks.FlattenModularThresholdActivationCondNet( 
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1,

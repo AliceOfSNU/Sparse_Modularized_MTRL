@@ -76,7 +76,7 @@ class MTSACHARD(TwinSACQ):
         self.qf1.train()
         self.qf2.train()
 
-        self.pf.det() #to deterministic mode
+        #self.pf.det() #to deterministic mode
         """
         Policy operations.
         """
@@ -90,7 +90,7 @@ class MTSACHARD(TwinSACQ):
             else:
                 sample_info = self.pf.explore(obs, return_log_probs=True, return_weights=self.record_weights)
 
-        self.pf.stoc() #back to sampling mode
+        #self.pf.stoc() #back to sampling mode
         mean = sample_info["mean"]
         log_std = sample_info["log_std"]
         new_actions = sample_info["action"]
@@ -215,14 +215,14 @@ class MTSACHARD(TwinSACQ):
         
         
         info = {}
-        if self.record_weights:
-            target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
-            target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
-            for t in range(2):
-                for l in range(2):
-                    for m in range(4):
-                        info["Task{0}_{1}_{2}/logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
-                        info["Task{0}_{1}_{2}/samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
+        #if self.record_weights:
+        #    target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
+        #    target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
+        #    for t in range(2):
+        #        for l in range(2):
+        #            for m in range(4):
+        #                info["Task{0}_{1}_{2}/logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
+        #                info["Task{0}_{1}_{2}/samples".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
 
 
         std_reg_loss = self.policy_std_reg_weight * (log_std**2).mean()
@@ -316,9 +316,10 @@ class MTSACHARD(TwinSACQ):
                                                     self.sample_key,
                                                     reshape=False)
             infos = self.update(batch)
-            self.logger.add_update_info(infos)
+            if self.logger is not None:
+                self.logger.add_update_info(infos)
 
-        if self.middlebox:
+        if self.middlebox is not None:
             self.middlebox.end_epoch()
 
     def evaluate(self):
