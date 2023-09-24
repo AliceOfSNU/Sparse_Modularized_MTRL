@@ -146,6 +146,7 @@ def experiment(args):
         **params['sac'],
         **params['general_setting']
     )
+    
     agent.train()
 
 if __name__ == "__main__":

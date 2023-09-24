@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchrl.networks.init as init
 import torchrl.algo.utils as utils
-
+import random 
 class ZeroNet(nn.Module):
     def forward(self, x):
         return torch.zeros(1)
@@ -549,7 +549,7 @@ class ModularThresholdActivationCondNet(nn.Module):
         self.layers = []
         self.num_layers = num_layers
         self.num_modules = num_modules
-
+        self.greedy_epsilon = 1.0 #will be set from outside
         # modularized main network
         for i in range(num_layers):
             layer_modules = []
@@ -636,7 +636,12 @@ class ModularThresholdActivationCondNet(nn.Module):
             logits.append(logit)
 
             softmax = torch.softmax(logit, dim=-1)
-            select = utils._threshold(softmax, 0.8)
+
+            if random.random() > self.greedy_epsilon:
+                select = utils._threshold(softmax, 0.8)
+            else:
+                select = utils._threshold(torch.rand_like(softmax), 0.8)
+
             # where all weights are below threshold, replace with argmax
             #select_argmax = utils._argmax(softmax)
             #select = torch.where(select_threshold.sum(dim=-1, keepdim=True) < 1e-3, select_argmax, select_threshold)
