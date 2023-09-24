@@ -253,8 +253,8 @@ class MTSACHARD(TwinSACQ):
 
         if self.grad_clip:
             info['Training/pf_norm'] = pf_norm.item()
-            info['Training/qf1_norm'] = qf1_norm.item()
-            info['Training/qf2_norm'] = qf2_norm.item()
+            info['Training/qf1_norm'] = q1_pred.mean().item()
+            info['Training/qf2_norm'] = q2_pred.mean().item()
 
         if self.record_weights:
             target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
@@ -280,10 +280,10 @@ class MTSACHARD(TwinSACQ):
         #info['log_probs/max'] = log_probs.max().item()
         #info['log_probs/min'] = log_probs.min().item()
 
-        #info['mean/mean'] = mean.mean().item()
-        #info['mean/std'] = mean.std().item()
-        #info['mean/max'] = mean.max().item()
-        #info['mean/min'] = mean.min().item()
+        info['mean/mean'] = mean.mean().item()
+        info['mean/std'] = mean.std().item()
+        info['mean/max'] = mean.max().item()
+        info['mean/min'] = mean.min().item()
 
         return info
 

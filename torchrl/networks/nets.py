@@ -420,10 +420,10 @@ class ModularSelectCascadeNet(nn.Module):
         if self.deterministic:
             for i in range(self.num_layers-1):
                 logit = self.select_fcs[i](select_input) #last dim is num_modules**2
-                logit = F.tanh(logit)
+                logit = F.softmax(logit)
 
                 select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
-                logits.insert(0, select)
+                logits.append(select)
 
                 # v1: select = choose maximum!!
                 #max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
@@ -433,7 +433,7 @@ class ModularSelectCascadeNet(nn.Module):
                 # v2: select = hard sampling
                 select = F.gumbel_softmax(select, tau=0.02, hard=False, dim=-1)
 
-                selects.insert(0, select)
+                selects.append(select)
                 select_input = self.select_cond_fcs[i](logit)
                 select_input = select_input*embedding
                 select_input = self.activation_func(select_input)
@@ -634,15 +634,14 @@ class ModularThresholdActivationCondNet(nn.Module):
             logit = self.select_fcs[i](select_input) #last dim is num_modules**2
             logit = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
             logits.append(logit)
-            select_sigmoid = utils._sigmoid(logit, hard=True)
-            select_argmax = utils._argmax(logit)
+
+            softmax = torch.softmax(logit, dim=-1)
+            select = utils._threshold(softmax, 0.8)
             # where all weights are below threshold, replace with argmax
-            select = torch.where(select_sigmoid.sum(dim=-1, keepdim=True) < 1e-3, select_argmax, select_sigmoid)
+            #select_argmax = utils._argmax(softmax)
+            #select = torch.where(select_threshold.sum(dim=-1, keepdim=True) < 1e-3, select_argmax, select_threshold)
             selects.append(select)
             
-            #if select_sigmoid.requires_grad:
-            #    select_sigmoid.register_hook(_backward_cb)
-            # for prev layer conditioning
             selects_flattened.append(select.flatten(start_dim=-2))
             flattened_selects = torch.cat(selects_flattened, dim=-1)
 
@@ -652,9 +651,9 @@ class ModularThresholdActivationCondNet(nn.Module):
             select_input = self.activation_func(select_input)
 
         final_logits = self.select_fcs[self.num_layers-1](select_input)
-        final_sigmoid = utils._sigmoid(final_logits)
-        final_argmax = utils._argmax(final_logits)
-        final_select = torch.where(final_sigmoid.sum(dim=-1, keepdim=True) < 1e-3, final_argmax, final_sigmoid)
+        final_select = utils._threshold(torch.softmax(final_logits, dim=-1), 0.8)
+        #final_argmax = utils._argmax(final_logits)
+        #final_select = torch.where(final_sigmoid.sum(dim=-1, keepdim=True) < 1e-3, final_argmax, final_sigmoid)
             
         # run forward for each module
         module_outputs = [module(out).unsqueeze(-2) for module in self.layers[0]]
@@ -673,6 +672,7 @@ class ModularThresholdActivationCondNet(nn.Module):
                 
         out = torch.cat(module_outputs, dim=-2)
         out = (final_select.unsqueeze(-1)*out).sum(dim=-2)
+        out = self.activation_func(out)
         out = self.last(out)
         
 
