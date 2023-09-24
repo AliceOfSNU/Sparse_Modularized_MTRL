@@ -272,10 +272,17 @@ class MTSACHARD(TwinSACQ):
 
         if self.grad_clip:
             info['Training/pf_norm'] = pf_norm.item()
-            info['Training/qf1_norm'] = qf1_norm.item()
-            info['Training/qf2_norm'] = qf2_norm.item()
+            info['Training/qf1_norm'] = q1_pred.mean().item()
+            info['Training/qf2_norm'] = q2_pred.mean().item()
 
-        
+        if self.record_weights:
+            target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
+            target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
+            for t in range(2):
+                for l in range(2):
+                    for m in range(4):
+                        info["Task{0}_{1}_{2}/mean_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
+                        info["Task{0}_{1}_{2}/selection_cnts".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
             #add entropy of choice
         #info['log_std/mean'] = log_std.mean().item()
         #info['log_std/std'] = log_std.std().item()
@@ -292,18 +299,18 @@ class MTSACHARD(TwinSACQ):
         #info['log_probs/max'] = log_probs.max().item()
         #info['log_probs/min'] = log_probs.min().item()
 
-        #info['mean/mean'] = mean.mean().item()
-        #info['mean/std'] = mean.std().item()
-        #info['mean/max'] = mean.max().item()
-        #info['mean/min'] = mean.min().item()
+        info['mean/mean'] = mean.mean().item()
+        info['mean/std'] = mean.std().item()
+        info['mean/max'] = mean.max().item()
+        info['mean/min'] = mean.min().item()
 
         return info
 
     def update_per_epoch(self):
-        self.select_temp = next(self.temp_schedule)
-        self.qf1.select_temp = self.qf2.select_temp = self.pf.select_temp = self.select_temp
-        self.select_desaturation = next(self.desaturation_schedule)
-        self.qf1.select_desaturation = self.qf2.select_desaturation = self.pf.select_desaturation = self.select_desaturation
+        #self.select_temp = next(self.temp_schedule)
+        #self.qf1.select_temp = self.qf2.select_temp = self.pf.select_temp = self.select_temp
+        #self.select_desaturation = next(self.desaturation_schedule)
+        #self.qf1.select_desaturation = self.qf2.select_desaturation = self.pf.select_desaturation = self.select_desaturation
         for _ in range(self.opt_times):
             batch = self.replay_buffer.random_batch(self.batch_size,
                                                     self.sample_key,

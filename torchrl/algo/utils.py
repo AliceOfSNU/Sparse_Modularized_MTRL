@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
 
@@ -54,3 +56,31 @@ def linear_schedule(start, end, start_epochs, epochs):
         curr += dx
         yield curr
     while True: yield end
+
+def _sigmoid(x: torch.Tensor, hard: bool=True, threshold:float=0.5):
+    if hard:
+        soft_sig = torch.sigmoid(x)
+        ret = torch.where(soft_sig > threshold, 1.0, 0.0)
+        ## straight through - let gradient flow
+        ret = ret - x.detach() + soft_sig
+    else: ret = torch.functional.sigmoid(x)
+    return ret
+
+def _argmax(x: torch.Tensor):
+    index = x.max(-1, keepdim=True)[1]
+    ret = torch.zeros_like(x).scatter_(-1, index, 1.0)
+    ## straight through - let gradient flow
+    ret = ret - x.detach() + x
+    return ret
+
+'''
+@{param} x: torch.Tensor
+@{returns} a tensor of same shape as x, 1.0 for > 0.8*max value and 0.0 for otherwise.
+'''
+def _threshold(x: torch.Tensor, threshold: float):
+    assert(threshold <= 1.0, "threshold must be between 0 and 1")
+    max = x.max(-1, keepdim=True)[0]
+    ret = torch.where(x > threshold*max.detach(), 1.0, 0.0)
+    ret = ret - x.detach() + x
+    return ret
+
