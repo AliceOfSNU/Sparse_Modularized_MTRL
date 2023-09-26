@@ -66,7 +66,7 @@ def experiment(args):
     example_ob = env.reset()
     example_embedding = env.active_task_one_hot
     total_opt_times = params["general_setting"]["num_epochs"]*params["general_setting"]["opt_times"]
-    pf = policies.ModularGuassianThresholdActivationContPolicy(
+    pf = policies.ModularGuassianSelectCascadeContPolicy(
         input_shape=env.observation_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=2 * env.action_space.shape[0],
@@ -75,12 +75,12 @@ def experiment(args):
     if args.pf_snap is not None:
         pf.load_state_dict(torch.load(args.pf_snap, map_location='cpu'))
 
-    qf1 = networks.FlattenModularThresholdActivationCondNet(
+    qf1 = networks.FlattenModularSelectCascadeCondNet(
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1,
         **params['net'])
-    qf2 = networks.FlattenModularThresholdActivationCondNet( 
+    qf2 = networks.FlattenModularSelectCascadeCondNet( 
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1,

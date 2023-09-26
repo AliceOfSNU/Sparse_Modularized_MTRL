@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchrl.networks.init as init
 import torchrl.algo.utils as utils
-
+import random 
 class ZeroNet(nn.Module):
     def forward(self, x):
         return torch.zeros(1)
@@ -417,6 +417,7 @@ class ModularSelectCascadeNet(nn.Module):
         select_input = self.activation_func(embedding)
 
         #if self.deterministic:
+        self.deterministic= False
         if self.deterministic:
             for i in range(self.num_layers-1):
                 logit = self.select_fcs[i](select_input) #last dim is num_modules**2
@@ -431,7 +432,7 @@ class ModularSelectCascadeNet(nn.Module):
                 #select.scatter_(dim = -1, index = max_select_idx, value = 1)
 
                 # v2: select = hard sampling
-                select = F.gumbel_softmax(select, tau=0.02, hard=False, dim=-1)
+                select = F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1)
 
                 selects.append(select)
                 select_input = self.select_cond_fcs[i](logit)
@@ -451,10 +452,10 @@ class ModularSelectCascadeNet(nn.Module):
         else:
             for i in range(self.num_layers-1):
                 logit = self.select_fcs[i](select_input) #last dim is num_modules**2
-                logit = F.tanh(logit)
                 select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
                 #select *= 1/self.select_temp # temperature annealing for hard module
                 logits.append(select)
+                select = torch.softmax(select,dim=-1)
                 #logit_select = logit + self.select_daesaturation * torch.max(logit).detach().item()
                 
                 '''
@@ -468,7 +469,6 @@ class ModularSelectCascadeNet(nn.Module):
                 scheduling from 1.0 to 0.02.
                 '''
                 selects.append(F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1))
-                #selects.insert(0, F.softmax(select , dim=-1))
                 select_input = self.select_cond_fcs[i](logit)
                 select_input = select_input*embedding
                 select_input = self.activation_func(select_input)
@@ -549,7 +549,7 @@ class ModularThresholdActivationCondNet(nn.Module):
         self.layers = []
         self.num_layers = num_layers
         self.num_modules = num_modules
-
+        self.greedy_epsilon = 1.0 #will be set from outside
         # modularized main network
         for i in range(num_layers):
             layer_modules = []
@@ -636,7 +636,12 @@ class ModularThresholdActivationCondNet(nn.Module):
             logits.append(logit)
 
             softmax = torch.softmax(logit, dim=-1)
-            select = utils._threshold(softmax, 0.8)
+
+            if random.random() > self.greedy_epsilon:
+                select = utils._threshold(softmax, 0.8)
+            else:
+                select = utils._threshold(torch.rand_like(softmax), 0.8)
+
             # where all weights are below threshold, replace with argmax
             #select_argmax = utils._argmax(softmax)
             #select = torch.where(select_threshold.sum(dim=-1, keepdim=True) < 1e-3, select_argmax, select_threshold)

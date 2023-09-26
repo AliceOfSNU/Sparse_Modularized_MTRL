@@ -43,7 +43,7 @@ class MTSACHARD(TwinSACQ):
 
         self.temp_schedule = utils.linear_schedule(1.0, 0.02, 10, 500)
         #self.temp_schedule = utils.linear_schedule(1.0, 0.1, 0, 10)
-        self.select_temp = 1.0
+        self.select_temp = 0.8
         self.desaturation_schedule = utils.linear_schedule(1.0, 0.0, 10, max(0, self.num_epochs//2 - 10))
 
     def update(self, batch):
@@ -288,8 +288,8 @@ class MTSACHARD(TwinSACQ):
         return info
 
     def update_per_epoch(self):
-        #self.select_temp = next(self.temp_schedule)
-        #self.qf1.select_temp = self.qf2.select_temp = self.pf.select_temp = self.select_temp
+        self.select_temp = next(self.temp_schedule)
+        self.qf1.greedy_epsilon = self.qf2.greedy_epsilon = self.pf.greedy_epsilon = self.select_temp
         #self.select_desaturation = next(self.desaturation_schedule)
         #self.qf1.select_desaturation = self.qf2.select_desaturation = self.pf.select_desaturation = self.select_desaturation
         for _ in range(self.opt_times):
