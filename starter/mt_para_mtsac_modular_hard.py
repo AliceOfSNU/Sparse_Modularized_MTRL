@@ -66,10 +66,10 @@ def experiment(args):
     example_ob = env.reset()
     example_embedding = env.active_task_one_hot
     total_opt_times = params["general_setting"]["num_epochs"]*params["general_setting"]["opt_times"]
-    pf = policies.ModularGuassianSparseCascadeContPolicy(
+    pf = policies.ModularGuassianSparseContPolicy(
         input_shape=env.observation_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
-        output_shape=2 * env.action_space.shape[0],
+        output_shape=2 * env.action_space.shape[0],cond_ob=False,
         **params['net'])
 
     if args.pf_snap is not None:
@@ -78,12 +78,12 @@ def experiment(args):
     qf1 = networks.FlattenModularSparseCondNet(
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
-        output_shape=1, cond_ob=False
+        output_shape=1, cond_ob=False,
         **params['net'])
     qf2 = networks.FlattenModularSparseCondNet( 
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
-        output_shape=1,
+        output_shape=1,cond_ob=False,
         **params['net'])
 
     if args.qf1_snap is not None:
