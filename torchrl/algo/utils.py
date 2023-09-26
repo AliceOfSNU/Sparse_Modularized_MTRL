@@ -84,3 +84,18 @@ def _threshold(x: torch.Tensor, threshold: float):
     ret = ret - x.detach() + x
     return ret
 
+def _sparsemax(x: torch.Tensor):
+    sorted, _ = torch.sort(-x)
+    sorted = -sorted
+    pfx = sorted.cumsum(dim = -1)
+    ks = torch.arange(0, x.shape[-1], dtype=torch.int64).expand(*sorted.shape)
+    z = 1 + (1+ks) * sorted
+    ks = torch.where(pfx < z, 1+ks, 0) #1 based indexing
+    index = ks.max(dim=-1, keepdim=True)[0]
+    tau = pfx.gather(dim = -1, index=index-1) #0 based indexing
+    tau = (tau-1)/index
+    return torch.relu(x - tau)
+
+
+    
+    

@@ -510,7 +510,7 @@ router network whether or not to use specific module in a layer.
 special options:
     - cond_ob : use state information in routing?
 '''
-class ModularThresholdActivationCondNet(nn.Module):
+class ModularSparseCondNet(nn.Module):
     def __init__(self, output_shape,
             base_type, em_input_shape, input_shape,
             em_hidden_shapes,
@@ -519,7 +519,7 @@ class ModularThresholdActivationCondNet(nn.Module):
             module_hidden,
             gating_hidden, num_gating_layers,
             # options
-            cond_ob = True,
+            cond_ob = False,
             #lasso = False,
             #lasso_weight = 0.3,
             add_bn = True,
@@ -635,28 +635,18 @@ class ModularThresholdActivationCondNet(nn.Module):
             logit = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
             logits.append(logit)
 
-            softmax = torch.softmax(logit, dim=-1)
-
-            if random.random() > self.greedy_epsilon:
-                select = utils._threshold(softmax, 0.8)
-            else:
-                select = utils._threshold(torch.rand_like(softmax), 0.8)
-
-            # where all weights are below threshold, replace with argmax
-            #select_argmax = utils._argmax(softmax)
-            #select = torch.where(select_threshold.sum(dim=-1, keepdim=True) < 1e-3, select_argmax, select_threshold)
+            select = utils._sparsemax(logit)
             selects.append(select)
             
             selects_flattened.append(select.flatten(start_dim=-2))
             flattened_selects = torch.cat(selects_flattened, dim=-1)
-
             
             select_input = self.select_cond_fcs[i](flattened_selects)
             select_input = select_input*embedding
             select_input = self.activation_func(select_input)
 
         final_logits = self.select_fcs[self.num_layers-1](select_input)
-        final_select = utils._threshold(torch.softmax(final_logits, dim=-1), 0.8)
+        final_select = utils._sparsemax(final_logits)
         #final_argmax = utils._argmax(final_logits)
         #final_select = torch.where(final_sigmoid.sum(dim=-1, keepdim=True) < 1e-3, final_argmax, final_sigmoid)
             
@@ -704,7 +694,7 @@ class FlattenModularSelectCascadeCondNet(ModularSelectCascadeNet):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)
 
-class FlattenModularThresholdActivationCondNet(ModularThresholdActivationCondNet):
+class FlattenModularSparseCondNet(ModularSparseCondNet):
     def forward(self, input, embedding_input, return_weights = False):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)
