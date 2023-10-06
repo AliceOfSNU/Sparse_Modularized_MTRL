@@ -519,7 +519,7 @@ class ModularSparseCondNet(nn.Module):
             module_hidden,
             gating_hidden, num_gating_layers,
             # options
-            cond_ob = False,
+            cond_ob = True,
             #lasso = False,
             #lasso_weight = 0.3,
             add_bn = True,

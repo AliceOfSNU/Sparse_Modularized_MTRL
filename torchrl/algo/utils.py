@@ -75,22 +75,27 @@ def _argmax(x: torch.Tensor):
 
 '''
 @{param} x: torch.Tensor
+@{param} threshold: float
 @{returns} a tensor of same shape as x, 1.0 for > 0.8*max value and 0.0 for otherwise.
 '''
 def _threshold(x: torch.Tensor, threshold: float):
-    assert(threshold <= 1.0, "threshold must be between 0 and 1")
     max = x.max(-1, keepdim=True)[0]
     ret = torch.where(x > threshold*max.detach(), 1.0, 0.0)
     ret = ret - x.detach() + x
     return ret
 
+
+'''
+@{param} x: torch.Tensor
+@{returns} a probability tensor with small values going to zero.
+'''
 def _sparsemax(x: torch.Tensor):
     sorted, _ = torch.sort(-x)
     sorted = -sorted
     pfx = sorted.cumsum(dim = -1)
-    ks = torch.arange(0, x.shape[-1], dtype=torch.int64).expand(*sorted.shape)
+    ks = torch.arange(0, x.shape[-1], dtype=torch.int64).expand(*sorted.shape).to(x.device)
     z = 1 + (1+ks) * sorted
-    ks = torch.where(pfx < z, 1+ks, 0) #1 based indexing
+    ks = torch.where(pfx < z, 1+ks, 0).to(x.device) #1 based indexing
     index = ks.max(dim=-1, keepdim=True)[0]
     tau = pfx.gather(dim = -1, index=index-1) #0 based indexing
     tau = (tau-1)/index

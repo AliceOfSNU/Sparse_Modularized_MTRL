@@ -115,8 +115,8 @@ box = ax1.get_position()
 
 leg = ax1.legend(
            loc='upper center', bbox_to_anchor=(0.5, -0.05),
-           ncol=5,
-           fontsize=25)
+           ncol=3,
+           fontsize=20)
 
 for legobj in leg.legendHandles:
     legobj.set_linewidth(10.0)
