@@ -18,7 +18,7 @@
         "num_modules": 4,
         "module_hidden": 256,
         "num_gating_layers": 2,
-        "gating_hidden": 256,
+        "gating_hidden": 300,
         "add_bn": false
     },
     "general_setting": {

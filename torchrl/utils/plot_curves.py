@@ -9,7 +9,16 @@ import argparse
 import csv
 
 # names
-
+task_names=['reach-v1', 
+    'push-v1', 
+    'pick-place-v1', 
+    'door-v1', 
+    'drawer-open-v1', 
+    'drawer-close-v1', 
+    'button-press-topdown-v1', 
+    'ped-insert-side-v1', 
+    'window-open-v1', 
+    'window-close-v1']
 
 # run
 '''
@@ -25,9 +34,9 @@ def get_args():
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument('--path', type=str, nargs='+', default=(0,),
                         help='which csv files to read')
-    parser.add_argument('--tags', type=str, nargs='+', default=(0,),
+    parser.add_argument('--tags', type=str, nargs='+', default=[],
                         help='legend items')
-    parser.add_argument('--item', type=str, default='mean_success_rate',
+    parser.add_argument('--item', type=str, nargs='+', default=('mean_success_rate'),
                         help='which column to read')
     parser.add_argument('--max_m', type=int, default=None,
                         help='maximum million')
@@ -38,6 +47,14 @@ def get_args():
     parser.add_argument('--output_dir', type=str, default='./fig',
                         help='directory for plot output (default: ./fig)')
     args = parser.parse_args()
+
+    if args.item[0] == "ALL_TASKS":
+        args.path = [args.path[0]]*len(task_names)
+        args.item = ["{}_success_rate".format(s) for s in task_names]
+        args.tags = [s for s in task_names]
+    
+    if len(args.tags) == 0:
+        args.tags = [s for s in args.item]
     return args
 
 
@@ -71,7 +88,7 @@ for linecnt, (path, tag) in enumerate(zip(args.path, args.tags)):
     with open(path,'r') as f:
         csv_reader = csv.DictReader(f)
         for row in csv_reader:
-            temp_ys.append(float(row[args.item])) #read item
+            temp_ys.append(float(row[args.item[0]])) #read item
             temp_xs.append(int(row["Total Frames"]))
 
     step_number = np.array(temp_xs) / 1e6 # time axis in millions
@@ -97,9 +114,9 @@ ax1.tick_params(labelsize=25)
 box = ax1.get_position()
 
 leg = ax1.legend(
-           loc='best',
-           ncol=1,
-           fontsize=25)
+           loc='upper center', bbox_to_anchor=(0.5, -0.05),
+           ncol=3,
+           fontsize=20)
 
 for legobj in leg.legendHandles:
     legobj.set_linewidth(10.0)

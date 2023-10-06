@@ -423,7 +423,7 @@ class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, E
 
 
 
-class ModularGuassianThresholdActivationContPolicy(networks.ModularThresholdActivationCondNet, EmbeddingGuassianContPolicyBase):
+class ModularGuassianSparseContPolicy(networks.ModularSparseCondNet, EmbeddingGuassianContPolicyBase):
     def forward(self, x, embedding_input, return_weights = False ):
         x = super().forward(x, embedding_input, return_weights = return_weights)
         if isinstance(x, tuple):

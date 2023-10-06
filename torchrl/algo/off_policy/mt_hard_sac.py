@@ -41,8 +41,8 @@ class MTSACHARD(TwinSACQ):
         self.record_weights = False
         self.record_weights = record_weights
 
-        #self.temp_schedule = utils.linear_schedule(0.8, 0.05, 10, 1000)
-        self.temp_schedule = utils.linear_schedule(0.8, 0.1, 0, 10)
+        self.temp_schedule = utils.linear_schedule(1.0, 0.02, 10, 500)
+        #self.temp_schedule = utils.linear_schedule(1.0, 0.1, 0, 10)
         self.select_temp = 0.8
         self.desaturation_schedule = utils.linear_schedule(1.0, 0.0, 10, max(0, self.num_epochs//2 - 10))
 
