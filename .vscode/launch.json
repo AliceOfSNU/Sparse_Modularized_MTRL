@@ -12,7 +12,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "subProcess": false,
-            "args": [ "--id", "MT10_HARD", "--config", "meta_config/mt10/modular_4_4_2_300_hard.json", "--seed", "18", "--worker_nums", "10", "--eval_worker_nums", "10"]
+            "args": [ "--id", "MT10_HARD", "--config", "meta_config/mt10/modular_3_4_2_300_hard.json", "--seed", "18", "--worker_nums", "10", "--eval_worker_nums", "10"]
         },
         {
             "name": "Python: Hard-Module Evaluate",
@@ -22,8 +22,17 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "subProcess": false,
-            "annotation_args": ["--id", "MT10_HARD", "--config", "meta_config/mt10/modular_4_4_2_300_hard.json", "--seed", "3", "--worker_nums", "10", "--eval_worker_nums", "10", "--pf_snap", "log/MT10_Hard/mt10/3/model/model_pf_3400.pth", "--qf1_snap", "log/MT10_Hard/mt10/3/model/model_qf1_3400.pth","--qf2_snap", "log/MT10_Hard/mt10/3/model/model_qf2_3400.pth"],
-            "args": ["--id", "MT10_HARD", "--config", "meta_config/mt10/modular_4_4_2_300_hard.json", "--seed", "3", "--worker_nums", "10", "--eval_worker_nums", "10"]
+            "args": ["--id", "MT10_HARD", "--config", "meta_config/mt10/modular_3_4_2_300_hard.json", "--seed", "18", "--worker_nums", "10", "--eval_worker_nums", "10", "--pf_snap", "log/MT10_Hard/mt10/12/model/model_pf_best.pth", "--qf1_snap", "log/MT10_Hard/mt10/12/model/model_qf1_best.pth","--qf2_snap", "log/MT10_Hard/mt10/12/model/model_qf2_best.pth"],
+        },
+        {
+            "name": "Python: Soft-Module Evaluate",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "subProcess": false,
+            "args": ["--id", "MT10_Conditioned_Modular_Deep", "--config", "meta_config/mt10/modular_4_4_2_128_reweight_rand.json", "--seed", "1", "--worker_nums", "10", "--eval_worker_nums", "10", "--pf_snap", "log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_pf_best.pth", "--qf1_snap", "log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_qf1_best.pth","--qf2_snap", "log/MT10_Conditioned_Modular_Deep/mt10/1/model/model_qf2_best.pth"],
         },
         {
             "name": "Python: Current File",

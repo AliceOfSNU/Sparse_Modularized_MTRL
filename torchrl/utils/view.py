@@ -18,6 +18,17 @@ import graphviz
 from pprint import pprint
 from PIL import Image
 
+task_names=['reach-v1', 
+    'push-v1', 
+    'pick-place-v1', 
+    'door-v1', 
+    'drawer-open-v1', 
+    'drawer-close-v1', 
+    'button-press-topdown-v1', 
+    'ped-insert-side-v1', 
+    'window-open-v1', 
+    'window-close-v1']
+
 def evaluate_once(
     task_name:str,
     save_path: str,
@@ -98,7 +109,7 @@ def evaluate_once(
     if draw_g_weights:
         weights = torch.cat(gwts, 0)
         weights = weights.detach().cpu().numpy()
-        gframes = _draw_graph_weights(weights, save_path, title=f'weights_{task_name}')
+        gframes = _draw_graph(weights, save_path, title=f'weights_{task_name}')
         gframes = gframes[:len(frames)]
         w=frames[0].shape[1]
         h=frames[0].shape[0]
@@ -124,7 +135,7 @@ def evaluate_once(
 
 # draws network connectivity
 # this function has dependency on 
-def _draw_graph_weights(
+def _draw_graph(
     weights,
     out_path:str,
     title:str = "Module_Graph_Weights"
@@ -165,8 +176,7 @@ def _draw_graph_weights(
 
     return frames
     
-
-
+# 
 import argparse
 parser = argparse.ArgumentParser(description='RL')
     

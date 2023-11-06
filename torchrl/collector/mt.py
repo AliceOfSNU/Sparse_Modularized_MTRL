@@ -186,7 +186,16 @@ class MultiTaskCollector(BaseCollector):
         eval_rews = [] # collect across all envs
         mean_success_rate = 0 # collect across all envs
         tasks_result = []
-        task_wts = []
+        tasks_stats = {}
+
+        AVG_OVER_TIME = 1 << 0
+        AVG_OVER_EPIS = 1 << 1
+        AVG_OVER_TASKS = 1 << 2
+        
+        summarize = {"selects":AVG_OVER_TIME | AVG_OVER_EPIS, 
+                "final_selects":AVG_OVER_TIME | AVG_OVER_EPIS,
+                "selects_allflat": AVG_OVER_TIME}
+        
         self.pf.eval() # batch norm off..
         #self.pf.det()
         # iterate over all envs
@@ -204,8 +213,8 @@ class MultiTaskCollector(BaseCollector):
             env_success = 0
             env_eval_rews = []
 
-            weight_tensors = []
             # evaluate for certain num of episodes
+            episode_stats = {}
             for idx in range(self.eval_episodes):
                 if self.reset_idx:
                     #eval_ob = env.reset_with_index(idx)
@@ -214,13 +223,14 @@ class MultiTaskCollector(BaseCollector):
                     eval_ob = env.reset()
                 rew = 0
                 current_success = 0 # 0 or 1
+                stats = {}
                 while not done: # one episode
                     # sample action
                     embedding_input = torch.zeros(self.task_nums)
                     embedding_input[task_idx] = 1
                     embedding_input = embedding_input.unsqueeze(0).to(self.device)
-                    act, gweights = self.pf.eval_act( torch.Tensor( eval_ob ).to(self.device).unsqueeze(0), embedding_input, return_weights = True)
-                    weight_tensors.append(gweights)
+                    act, stat_info = self.pf.eval_act( torch.Tensor( eval_ob ).to(self.device).unsqueeze(0), embedding_input, return_weights = True)
+                    
                     # step env
                     eval_ob, r, done, info = env.step( act )
                     rew += r
@@ -230,13 +240,27 @@ class MultiTaskCollector(BaseCollector):
                         env.render()
                     current_success = max(current_success, info["success"])
 
-                # summarize one episode--_+_+
+                    # compile other stats (per timestep)
+                    for k, stat in stat_info.items():
+                        if k not in stats:
+                            stats[k] = [stat]
+                        else:
+                            stats[k].append(stat)
+
+                # summarize one episode
                 env_eval_rews.append(rew)
                 done = False
                 env_success += current_success
 
+                # time averaging
+                for k, stat in stats.items():
+                    if k not in summarize: continue
+                    elif summarize[k] & AVG_OVER_TIME:
+                        if k not in episode_stats: episode_stats[k] = []
+                        episode_stats[k].append(torch.stack(stat).mean(dim=0))
+
+            ### summary over the entire evaluation for this TASK ###
             
-            # summarize evaluation for this task
             env_success_rate = env_success / self.eval_episodes
             tasks_result.append((task_name, env_success_rate, np.mean(env_eval_rews)))
             self.tasks_progress[task_idx] *= (1 - self.progress_alpha)
@@ -244,17 +268,27 @@ class MultiTaskCollector(BaseCollector):
             mean_success_rate += env_success_rate
             eval_rews += env_eval_rews
 
-            # for plotting module selections
-            #wt = torch.stack(weight_tensors)
-            #wt = wt.sum(dim = 0) #average across batch do sum!!
-            #task_wts.append(wt)
-
-        
+            # summarize over episodes
+            for k, stat in episode_stats.items():
+                if k not in summarize: continue
+                if summarize[k] & AVG_OVER_EPIS:
+                    # average over all times and eval_episodes
+                    stat = torch.stack(stat)
+                    stat = stat.mean(dim = 0).chunk(stat.shape[0])
+                    if k not in tasks_stats: tasks_stats[k] = []
+                    for layer in range(len(stat)):
+                        tasks_stats[k].append((task_name + "_l{}".format(layer), stat[layer]))
+                else:
+                    if k not in tasks_stats: tasks_stats[k] = []
+                    tasks_stats[k].append((task_name, torch.stack(stat)))
+            
+        # summarize over tasks
         # in dictionary order of task names:
         tasks_result.sort()
+        for stat_arr in tasks_stats.values(): stat_arr.sort()
+
+        # final summary result
         dic = OrderedDict()
-        #wt = torch.cat(task_wts, dim=-1) #concat tasks as last dim
-        #for i in range(3): dic["wts_{}".format(i)] = wt[i]
 
         for task_name, env_success_rate, env_eval_rews in tasks_result:
             dic[task_name+"_success_rate"] = env_success_rate
@@ -262,6 +296,23 @@ class MultiTaskCollector(BaseCollector):
     
         dic['eval_rewards']      = eval_rews
         dic['mean_success_rate'] = mean_success_rate / self.task_nums
+        
+        for k, stat_arr in tasks_stats.items():
+            if k not in summarize: continue
+            if summarize[k] & AVG_OVER_TASKS:
+                arr = []
+                for stat in stat_arr:
+                    dic[stat[0] + "_" + k] = stat[1]
+                    arr.append(stat[1])
+                #average across task
+                stat = torch.stack(arr)
+                dic["average_"+k] = stat.mean(dim=0)
+            else:
+                for stat in stat_arr:
+                    task_name = stat[0]
+                    dic[task_name + "_" + k] = stat[1]
+
+
         self.pf.train() # back to training mode.
         #self.pf.stoc()
         return dic

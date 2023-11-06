@@ -23,11 +23,11 @@ task_names=['reach-v1',
 # run
 '''
 python torchrl/utils/plot_curves.py \
-    --path log/MT10_Hard/mt10/3/log.csv log/MT10_Conditioned_Modular_Deep/mt10/1/log.csv\
-    --tags Hard Soft\
-    --item drawer-close-v1_success_rate\
+    --path log/MT10_Hard/mt10/7/log.csv log/MT10_Hard/mt10/12/log.csv log/MT10_Conditioned_Modular_Deep/mt10/1/log.csv\
+    --tags Hard Sparse Soft\
+    --item mean_success_rate\
     --max_m 10\
-    --title 'Drawer-Close Success Rate'
+    --title 'mean success Rate3'
 '''
 
 def get_args():

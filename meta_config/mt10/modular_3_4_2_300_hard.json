@@ -14,16 +14,16 @@
     "net":{ 
         "hidden_shapes": [400, 400],
         "em_hidden_shapes": [400],
-        "num_layers": 4,
+        "num_layers": 3,
         "num_modules": 4,
-        "module_hidden": 128,
+        "module_hidden": 256,
         "num_gating_layers": 2,
-        "gating_hidden": 300,
+        "gating_hidden": 256,
         "add_bn": false
     },
     "general_setting": {
         "discount" : 0.99,
-        "pretrain_epochs" : 20,
+        "pretrain_epochs" : 5,
         "num_epochs" : 5000,
         "epoch_frames" : 300,
         "max_episode_frames" : 150,
@@ -33,10 +33,10 @@
 
         "target_hard_update_period" : 1000,
         "use_soft_update" : true,
-        "tau" : 0.005,
+        "tau" : 0.004,
         "opt_times" : 200,
 
-        "eval_episodes" : 10
+        "eval_episodes" : 20
     },
     "sac":{
         

@@ -130,6 +130,10 @@ class RLAlgo():
                 self.episode_rewards.append(reward)
             # del eval_infos["eval_rewards"]
 
+            # log
+            if self.logger is None:
+                continue
+
             if self.best_eval is None or \
                 np.mean(eval_infos["eval_rewards"]) > self.best_eval:
                 self.best_eval = np.mean(eval_infos["eval_rewards"])
@@ -151,8 +155,9 @@ class RLAlgo():
 
             if epoch % self.save_interval == 0:
                 self.snapshot(self.save_dir, epoch)
-
-        self.snapshot(self.save_dir, "finish")
+                
+        if self.save_dir:
+            self.snapshot(self.save_dir, "finish")
         self.collector.terminate()
 
     def update(self, batch):

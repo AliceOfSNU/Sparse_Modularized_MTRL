@@ -80,7 +80,7 @@ def _argmax(x: torch.Tensor):
 '''
 def _threshold(x: torch.Tensor, threshold: float):
     max = x.max(-1, keepdim=True)[0]
-    ret = torch.where(x > threshold*max.detach(), 1.0, 0.0)
+    ret = torch.where(x > threshold*max.detach(), x, 0.0)
     ret = ret - x.detach() + x
     return ret
 

@@ -5,13 +5,15 @@ import os
 import os.path as osp
 import random
 import copy
-
+import matplotlib.colors as colors
 # external dependencies
 import numpy as np
 import torch
-from tabulate import tabulate
-import matplotlib
-import matplotlib.pyplot as plt
+import torch.nn as nn
+import torch.nn.functional as F
+from collections import OrderedDict
+from gradient import GradientBox
+from plots import tsne, draw_layer_weights
 
 # custom dependencies
 from torchrl.utils import get_args
@@ -65,151 +67,36 @@ def do_eval(agent):
     #tabulate_list.append([])
     #print( tabulate(tabulate_list) )
     
-    import matplotlib
-    import matplotlib.pyplot as plt
-
-    fig = plt.figure(figsize=(30,10))
-
-    ax1 = fig.add_subplot(111)
-    data = eval_infos["wts_2"]#layer wts{l}
-    ax1.pcolor(data.detach().cpu().numpy(), cmap='RdBu')
-    plt.title("Routing Differences 2", fontsize=40)
-    ax1.set_xticks(np.arange(0.5, 40 ,4),task_names, rotation=-45)
-    ax1.set_yticks(np.arange(0.5, 4, 1), ["module{}".format(i) for i in range(4)])
-    ax1.set_xlabel("Count of Each Module In (n-1)th Layer Selected, per Task")
-    ax1.set_ylabel("Module in Nth Layer")
+    # draw layer weights
+    #draw_layer_weights(eval_infos, 0, "Routing Differences layer=0")
     
-    if not os.path.exists( "./fig" ):
-        os.mkdir( "./fig" )
-    plt.savefig( os.path.join( "./fig", 'routing_layer3.png') ) 
-    plt.close()
+    # draws tsne visualizations
+    if False:
+        data = eval_infos
+        avgs = {"l0_zratios":[],"l1_zratios":[], "l2_zratios":[]}
+        for key in data:
+            for itkey in avgs:
+                if itkey in key:
+                    avgs[itkey].append(data[key].item())
+        for key in avgs:
+            data["avg_"+key]= np.mean(avgs[key])
+        return
+    dic = {}
+    for key, data in eval_infos.items():
+        if "selects_allflat" in key:
+            dic[key] = data.detach().cpu().numpy()
+    dic_sorted = sorted(dic.items(), key=lambda x: x[0], reverse=False)
+    data = []
+    targets = []
+    color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', \
+             '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    cols = []
+    for i, x in enumerate(dic_sorted):
+        data.append(x[1])
+        cols += [color[i]]*x[1].shape[0]
+        targets.append(x[0])
+    tsne(np.concatenate(data), cols, targets, "tsne task map")
 
-class GradientBox:
-    def __init__(self, net, optim):
-        self.optim = optim
-        self.net = net
-        self.objectives = []
-        self.grad_infos = []
-        self.grad_epoch_infos = None
-        self.update_cnt = 0 #counts #of backwards call
-        self.epoch_cnt = 0 #counts #of epochs for logging
-
-    def per_task_grads(self, data):
-        # divide gradients into tasks
-        # input: batch of raw data loss
-        task_grad_info = {}
-        task_losses = data.mean(dim=0).squeeze(0)
-        self.objectives = [*task_losses.chunk(task_losses.shape[0])]
-
-        task_grad_info = self.backward_proc()
-        self.update_cnt += 1
-        if self.grad_epoch_infos == None:
-            self.grad_epoch_infos = task_grad_info
-        else:
-            for k in task_grad_info:
-                for name in task_grad_info[k]:
-                    self.grad_epoch_infos[k][name] += task_grad_info[k][name]
-    
-    def end_epoch(self):
-        for k in self.grad_epoch_infos:
-            for name in self.grad_epoch_infos[k]:
-                self.grad_epoch_infos[k][name] /= self.update_cnt #average it out
-        self.grad_infos.append(self.grad_epoch_infos)
-
-        for name in self.grad_epoch_infos["cosine"]:
-            if self.epoch_cnt % 10 == 0 or self.epoch_cnt < 10:
-                fig, (ax1,ax2)= plt.subplots(1, 2)
-                ax1.pcolor(self.grad_epoch_infos["cosine"][name].cpu())
-                ax1.set_xticks(np.arange(0.5, 10 ,1),task_names, rotation=-45, fontsize=20)
-                ax1.set_yticks(np.arange(0.5, 10, 1),task_names, rotation=-45, fontsize=20)
-
-                ax2.pcolor(self.grad_epoch_infos["mags"][name].cpu())
-                ax2.set_xticks(np.arange(0.5, 10 ,1),task_names, rotation=-45, fontsize=20)
-                ax2.set_yticks(np.arange(0.5, 10, 1),task_names, rotation=-45, fontsize=20)
-
-                # good! save
-                plt.title('task gradients COV (epoch{}, {})'.format(self.epoch_cnt,name))
-                if not os.path.exists( "./fig/grads" ):
-                    os.mkdir( "./fig/grads" )
-                plt.savefig( os.path.join( "./fig/grads", 'cosines_epoch{}_{}.png'.format(self.epoch_cnt, name)) ) 
-                plt.close()
-
-        # reset and advance epoch
-        self.grad_epoch_infos = None # clear!
-        self.update_cnt = 0
-        self.epoch_cnt += 1
-        
-    def backward_proc(self):
-        # run the backwards
-        # list containing vec(grad) and its shape, for each task.(length = #tasks)
-        task_grads, task_shapes = [], []
-        for t, obj in enumerate(self.objectives):
-            self.optim.zero_grad(set_to_none=True)
-            obj.backward(retain_graph=True)
-            grad, shape = self._retrieve_grad()
-            task_grads.append({n:self._flatten_grad(g, shape[n]) for n, g in grad.items()})
-            task_shapes.append(shape)
-
-        # cosine similarity
-        cosines = {n:torch.zeros(len(task_grads), len(task_grads)) for n in task_grads[0]}
-        for ti in range(len(task_grads)):
-            for tj in range(len(task_grads)):
-                for n in task_grads[ti]:
-                    cosines[n][ti, tj] = torch.dot(task_grads[ti][n], task_grads[tj][n])
-        for n in cosines:
-            cosines[n].cpu().detach()
-
-        # magnitude similarity - harmonic mean
-        
-        mags = {n:torch.zeros(len(task_grads), len(task_grads)) for n in task_grads[0]}
-        for ti in range(len(task_grads)):
-            for tj in range(len(task_grads)):
-                for n in task_grads[ti]:
-                    n1 = torch.norm(task_grads[ti][n])
-                    n2 = torch.norm(task_grads[tj][n])
-                    mags[n][ti, tj] = n1*n2/(1e-8+n1+n2)
-        for n in mags:
-            mags[n].cpu().detach()
-        
-
-        self.optim.zero_grad(set_to_none=True) # we don't need to step on these gradients
-        return {"cosines":cosines, "mags":mags}
-
-    def _retrieve_grad(self):
-        grad, shape = {}, {}
-        #i,j = 0,0
-        #for group in self.optim.param_groups:
-        #    for p in group['params']:
-        #        # if p.grad is None: continue
-        #        if p.grad is not None and p.grad.ndim == 2:
-        #            if p.grad.mo:
-        #                n = "module{}_{}".format(i, j)
-        #                shape[n] = p.grad.shape
-        #                grad[n] = p.grad.clone()
-        #                j = (j+1)%4
-        #                if j == 0: i+=1
-
-        for l in range(self.net.num_layers):
-            for m in range(self.net.num_modules):
-                name = "module_{}_{}".format(l,m)
-                g = getattr(self.net,name).weight.grad.clone()
-                grad[name] = g
-                shape[name] = g.shape
-                
-        return grad, shape
-
-    def _unflatten_grad(self, grads, shapes):
-        unflatten_grad, idx = [], 0
-        for shape in shapes:
-            length = np.prod(shape)
-            unflatten_grad.append(grads[idx:idx + length].view(shape).clone())
-            idx += length
-        return unflatten_grad
-
-    def _flatten_grad(self, grads, shapes):
-        flatten_grad = torch.cat([g.flatten() for g in grads])
-        return flatten_grad
-    
 def do_extract_grads(agent):
     agent.middlebox = GradientBox(agent.pf, agent.pf_optimizer)
     agent.train()
@@ -249,24 +136,24 @@ def experiment(args):
     example_ob = env.reset()
     example_embedding = env.active_task_one_hot
     total_opt_times = params["general_setting"]["num_epochs"]*params["general_setting"]["opt_times"]
-    pf = policies.ModularGuassianThresholdActivationContPolicy(
+    pf = policies.ModularGuassianSparseContPolicy(
         input_shape=env.observation_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
-        output_shape=2 * env.action_space.shape[0],
+        output_shape=2 * env.action_space.shape[0],cond_ob=True,
         **params['net'])
 
     if args.pf_snap is not None:
         pf.load_state_dict(torch.load(args.pf_snap, map_location='cpu'))
 
-    qf1 = networks.FlattenModularThresholdActivationCondNet(
+    qf1 = networks.FlattenModularSparseCondNet(
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
-        output_shape=1,
+        output_shape=1,cond_ob=True,
         **params['net'])
-    qf2 = networks.FlattenModularThresholdActivationCondNet( 
+    qf2 = networks.FlattenModularSparseCondNet( 
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
-        output_shape=1,
+        output_shape=1,cond_ob=True,
         **params['net'])
 
     if args.qf1_snap is not None:
@@ -317,8 +204,8 @@ def experiment(args):
         **params['general_setting']
     )
     
-    #do_eval(agent)
-    do_extract_grads(agent)
+    do_eval(agent)
+    #do_extract_grads(agent)
 
 if __name__ == "__main__":
     experiment(args)

@@ -210,9 +210,9 @@ class MTSACHARD(TwinSACQ):
                         (alphas * log_probs - q_new_actions)).mean()
         
         ### IF MIDDLEBOXX
-        if self.middlebox:
-            grad_info = self.middlebox.per_task_grads(reweight_coeff *
-                        (alphas * log_probs - q_new_actions))
+        #if self.middlebox:
+        #    grad_info = self.middlebox.per_task_grads(reweight_coeff *
+        #                (alphas * log_probs - q_new_actions))
         
         
         info = {}
@@ -263,10 +263,10 @@ class MTSACHARD(TwinSACQ):
         info['Reward_Mean'] = rewards.mean().item()
         info["Select_Temp"] = self.select_temp
 
-        #if self.automatic_entropy_tuning:
-        #    for i in range(self.task_nums):
-        #        info["alpha_{}".format(i)] = self.log_alpha[i].exp().item()
-        #    info["Alpha_loss"] = alpha_loss.item()
+        if self.automatic_entropy_tuning:
+            for i in range(self.task_nums):
+                info["alpha_{}".format(i)] = self.log_alpha[i].exp().item()
+            info["Alpha_loss"] = alpha_loss.item()
         info['Training/policy_loss'] = policy_loss.item()
         info['Training/qf1_loss'] = qf1_loss.item()
         info['Training/qf2_loss'] = qf2_loss.item()
@@ -277,13 +277,12 @@ class MTSACHARD(TwinSACQ):
             info['Training/qf2_norm'] = q2_pred.mean().item()
 
         if self.record_weights:
-            target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
-            target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
-            for t in range(2):
-                for l in range(2):
-                    for m in range(4):
-                        info["Task{0}_{1}_{2}/mean_logits".format(t, l, m)] = target_sample_info["general_weights"][l,t,m].tolist()
-                        info["Task{0}_{1}_{2}/selection_cnts".format(t, l, m)] = target_sample_info["select_cnts"][l,t,m].tolist()
+            #target_sample_info["general_weights"] = torch.stack(target_sample_info["general_weights"])
+            #target_sample_info["select_cnts"] = torch.stack(target_sample_info["select_cnts"])
+            for t in range(3):
+                for l in range(self.pf.num_layers-1):
+                    info["Task{0}_{1}/selection_cnts".format(t, l)] = target_sample_info["select_cnts"][l,t].tolist()
+                info["Task{0}/final_selection".format(t)]=target_sample_info["final_selects"][0,t].tolist()
             #add entropy of choice
         #info['log_std/mean'] = log_std.mean().item()
         #info['log_std/std'] = log_std.std().item()
@@ -320,8 +319,8 @@ class MTSACHARD(TwinSACQ):
             if self.logger is not None:
                 self.logger.add_update_info(infos)
 
-        if self.middlebox is not None:
-            self.middlebox.end_epoch()
+        #if self.middlebox is not None:
+        #    self.middlebox.end_epoch()
 
     def evaluate(self):
         eval_start_time = time.time()

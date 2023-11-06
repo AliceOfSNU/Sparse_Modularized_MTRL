@@ -67,7 +67,7 @@ class Logger():
         tabulate_list = [["Name", "Value"]]
         
         for info in infos:
-            if "gumbel" in info: continue
+            if "gumbel" in info or type(infos[info]) != float: continue
             self.tf_writer.add_scalar( info, infos[info], total_frames )
             tabulate_list.append([ info, "{:.5f}".format( infos[info] ) ])
             if csv_write:

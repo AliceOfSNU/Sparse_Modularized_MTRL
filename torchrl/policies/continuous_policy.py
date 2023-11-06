@@ -284,8 +284,7 @@ class ModularGuassianGatedCascadeCondContPolicy(networks.ModularGatedCascadeCond
     def forward(self, x, embedding_input, return_weights = False ):
         x = super().forward(x, embedding_input, return_weights = return_weights)
         if isinstance(x, tuple):
-            general_weights = x[1]
-            last_weights = x[2]
+            info = x[1]
             x = x[0]
 
         mean, log_std = x.chunk(2, dim=-1)
@@ -294,7 +293,7 @@ class ModularGuassianGatedCascadeCondContPolicy(networks.ModularGatedCascadeCond
         std = torch.exp(log_std)
 
         if return_weights:
-            return mean, std, log_std, general_weights, last_weights
+            return mean, std, log_std, info
             # return mean, std, log_std, general_weights
         return mean, std, log_std
 
@@ -302,12 +301,12 @@ class ModularGuassianGatedCascadeCondContPolicy(networks.ModularGatedCascadeCond
         with torch.no_grad():
             if return_weights:
                 # mean, std, log_std, general_weights, last_weights = self.forward(x, embedding_input, return_weights)
-                mean, std, log_std, general_weights, last_weights = self.forward(x, embedding_input, return_weights)
+                mean, std, log_std, info = self.forward(x, embedding_input, return_weights)
             else:
                 mean, std, log_std = self.forward(x, embedding_input, return_weights)
         if return_weights:
             # return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), general_weights, last_weights
-            return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), general_weights
+            return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), info
         return torch.tanh(mean.squeeze(0)).detach().cpu().numpy()
 
 
@@ -357,8 +356,7 @@ class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, E
     def forward(self, x, embedding_input, return_weights = False ):
         x = super().forward(x, embedding_input, return_weights = return_weights)
         if isinstance(x, tuple):
-            general_weights = x[1]
-            last_weights = x[2]
+            info = x[1]
             x = x[0]
 
         mean, log_std = x.chunk(2, dim=-1)
@@ -367,19 +365,19 @@ class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, E
         std = torch.exp(log_std)
 
         if return_weights:
-            return mean, std, log_std, general_weights, last_weights
+            return mean, std, log_std, info
             # return mean, std, log_std, general_weights
         return mean, std, log_std
 
     def eval_act( self, x, embedding_input, return_weights = False ):
         with torch.no_grad():
             if return_weights:
-                mean, std, log_std, logits, select_cnts = self.forward(x, embedding_input, return_weights)
+                mean, std, log_std, info = self.forward(x, embedding_input, return_weights)
             else:
                 mean, std, log_std = self.forward(x, embedding_input, return_weights)
         if return_weights:
             # return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), general_weights, last_weights
-            return mean.squeeze(0).detach().cpu().numpy(), select_cnts
+            return mean.squeeze(0).detach().cpu().numpy(), info
         return mean.squeeze(0).detach().cpu().numpy()
 
 
@@ -427,9 +425,9 @@ class ModularGuassianSparseContPolicy(networks.ModularSparseCondNet, EmbeddingGu
     def forward(self, x, embedding_input, return_weights = False ):
         x = super().forward(x, embedding_input, return_weights = return_weights)
         if isinstance(x, tuple):
-            general_weights = x[1]
-            last_weights = x[2]
+            info = x[1]
             x = x[0]
+            
 
         mean, log_std = x.chunk(2, dim=-1)
 
@@ -437,30 +435,30 @@ class ModularGuassianSparseContPolicy(networks.ModularSparseCondNet, EmbeddingGu
         std = torch.exp(log_std)
 
         if return_weights:
-            return mean, std, log_std, general_weights, last_weights
-            # return mean, std, log_std, general_weights
+            return mean, std, log_std, info
         return mean, std, log_std
 
     def eval_act( self, x, embedding_input, return_weights = False ):
         with torch.no_grad():
             if return_weights:
-                mean, std, log_std, logits, select_cnts = self.forward(x, embedding_input, return_weights)
+                mean, std, log_std, info = self.forward(x, embedding_input, return_weights)
             else:
                 mean, std, log_std = self.forward(x, embedding_input, return_weights)
         if return_weights:
             # return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), general_weights, last_weights
-            return mean.squeeze(0).detach().cpu().numpy(), select_cnts
+            return mean.squeeze(0).detach().cpu().numpy(), info
         return mean.squeeze(0).detach().cpu().numpy()
 
 
     def explore( self, x, embedding_input, return_log_probs = False,
-                    return_pre_tanh = False, return_weights = False ):
+                    return_pre_tanh = False, return_weights = False):
         if return_weights:
-            mean, std, log_std,  general_weights, select_cnts = self.forward(x, embedding_input, return_weights)
+            mean, std, log_std, info = self.forward(x, embedding_input, return_weights)
             # general_weights, last_weights = weights
             dic = {
-                "general_weights": general_weights,
-                "select_cnts": select_cnts
+                #"general_weights": info[""],
+                "select_cnts": info["selects"],
+                "final_selects": info["final_selects"]
             }
         else:
             mean, std, log_std = self.forward(x, embedding_input)

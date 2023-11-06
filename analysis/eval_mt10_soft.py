@@ -123,8 +123,6 @@ def experiment(args):
     epochs = params['general_setting']['pretrain_epochs'] + \
         params['general_setting']['num_epochs']
 
-
-
     params['general_setting']['collector'] = MultiTaskCollector(
         env=env, pf=pf, replay_buffer=replay_buffer,
         env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
@@ -146,11 +144,11 @@ def experiment(args):
         **params['general_setting']
     )
 
-    eval_grads(agent)
-    #eval_infos = agent.evaluate()
+    #eval_grads(agent)
+    eval_infos = agent.evaluate()
 
     ## tabulate
-    #tabulate_list = [["Name", "Value"]]
+    tabulate_list = [["Name", "Value"]]
     #for info in eval_infos:
     #    if "_success_rate" not in info:continue
     #    tabulate_list.append([ info, "{:.5f}".format( eval_infos[info] ) ])
