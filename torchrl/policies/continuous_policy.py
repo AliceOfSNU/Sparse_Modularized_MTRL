@@ -420,6 +420,60 @@ class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, E
         return dic
 
 
+class ModularRoutedGuassianContPolicy(networks.ModularRoutedCascadeNet, EmbeddingGuassianContPolicyBase):
+    def forward(self, x, routes, final_route, return_weights = False ):
+        x = super().forward(x, routes, final_route, return_weights = return_weights)
+        if isinstance(x, tuple):
+            info = x[1]
+            x = x[0]
+
+        mean, log_std = x.chunk(2, dim=-1)
+        log_std = torch.clamp(log_std, LOG_SIG_MIN, LOG_SIG_MAX)
+        std = torch.exp(log_std)
+
+        if return_weights:
+            return mean, std, log_std, info
+            # return mean, std, log_std, general_weights
+        return mean, std, log_std
+
+    def eval_act( self, x, routes, final_route, return_weights = False ):
+        with torch.no_grad():
+            if return_weights:
+                mean, std, log_std, info = self.forward(x, routes, final_route, return_weights)
+            else:
+                mean, std, log_std = self.forward(x, routes, final_route, return_weights)
+        if return_weights:
+            # return torch.tanh(mean.squeeze(0)).detach().cpu().numpy(), general_weights, last_weights
+            return mean.squeeze(0).detach().cpu().numpy(), info
+        return mean.squeeze(0).detach().cpu().numpy()
+
+
+    def explore(self, x, routes, final_route, return_log_probs = False):
+        mean, std, log_std = self.forward(x, routes, final_route)
+        dic = {}
+
+        dis = TanhNormal(mean, std)
+        ent = dis.entropy().sum(-1, keepdim=True) 
+        dic.update({
+            "mean": mean,
+            "log_std": log_std,
+            "ent":ent
+        })
+        if return_log_probs:
+            action, z = dis.rsample( return_pretanh_value = True )
+            log_prob = dis.log_prob(
+                action,
+                pre_tanh_value=z
+            )
+            log_prob = log_prob.sum(dim=-1, keepdim=True)
+            dic["pre_tanh"] = z.squeeze(0)
+            dic["log_prob"] = log_prob
+        else:
+            action = dis.rsample(return_pretanh_value = False)
+            
+        dic["action"] = action.squeeze(0)
+        return dic
+
 
 class ModularGuassianSparseContPolicy(networks.ModularSparseCondNet, EmbeddingGuassianContPolicyBase):
     def forward(self, x, embedding_input, return_weights = False ):

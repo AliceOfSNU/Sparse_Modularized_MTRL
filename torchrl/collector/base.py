@@ -51,9 +51,13 @@ class BaseCollector:
         eval_env = None,
         epoch_frames=1000,
         device='cpu',
-        max_episode_frames = 999):
+        max_episode_frames = 999,
+        pfr=None):
 
         self.pf = pf
+        self.pfr = None
+        if pfr:
+            self.pfr = pfr
         self.replay_buffer = replay_buffer
 
         self.env = env
@@ -201,10 +205,12 @@ class BaseCollector:
 
     def to(self, device):
         for func in self.funcs:
+            if self.funcs[func] is None: continue
             self.funcs[func].to(device)
 
     @property
     def funcs(self):
         return {
-            "pf": self.pf
+            "pf": self.pf,
+            "pfr": self.pfr
         }

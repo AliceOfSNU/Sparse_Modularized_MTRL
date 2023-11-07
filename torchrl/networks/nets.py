@@ -12,46 +12,26 @@ class ZeroNet(nn.Module):
 
 class Net(nn.Module):
     def __init__(
-            self, output_shape,
-            base_type,
-            append_hidden_shapes=[],
-            append_hidden_init_func=init.basic_init,
+            self, output_shape, # 1 for q function, 6~8 for policy
+            base_type, # FC? CNN? refer to base.py
+            em_input_shape,  # task embedding vector shape(one hot = 10)
+            input_shape, # input size for single task. (scalar)
+            hidden_shapes=[],
+            hidden_init_func=init.basic_init,
             net_last_init_func=init.uniform_init,
             activation_func=F.relu,
             **kwargs):
 
         super().__init__()
-
-        self.base = base_type(activation_func=activation_func, **kwargs)
-        self.activation_func = activation_func
-        append_input_shape = self.base.output_shape
-        self.append_fcs = []
-        for i, next_shape in enumerate(append_hidden_shapes):
-            fc = nn.Linear(append_input_shape, next_shape)
-            append_hidden_init_func(fc)
-            self.append_fcs.append(fc)
-            # set attr for pytorch to track parameters( device )
-            self.__setattr__("append_fc{}".format(i), fc)
-            append_input_shape = next_shape
-
-        self.last = nn.Linear(append_input_shape, output_shape)
-        net_last_init_func(self.last)
+        self.base = base_type(input_shape + em_input_shape, #will simply concat task embedding input for multitask settings
+                              hidden_shapes = hidden_shapes+[output_shape],  
+                              last_activation_func = null_activation,
+                              activation_func=activation_func)
+        print(self.parameters)
 
     def forward(self, x):
         out = self.base(x)
-
-        for append_fc in self.append_fcs:
-            out = append_fc(out)
-            out = self.activation_func(out)
-
-        out = self.last(out)
         return out
-
-
-class FlattenNet(Net):
-    def forward(self, input):
-        out = torch.cat(input, dim = -1)
-        return super().forward(out)
 
 
 def null_activation(x):
@@ -291,7 +271,86 @@ class ModularGatedCascadeCondNet(nn.Module):
                           "final_selects": last_weight})
         return out
 
+'''
+Assumes routing is provided from outside in forward()function.
+'''
+class ModularRoutedCascadeNet(nn.Module):
+    def __init__(self, output_shape, 
+            base_type, input_shape,
+            hidden_shapes,
+            num_layers, num_modules,
+            module_hidden,
+            add_bn = True,
+            module_hidden_init_func = init.basic_init,
+            last_init_func = init.uniform_init,
+            activation_func = F.relu,
+            pre_softmax=False,
+             **kwargs ):
 
+        super().__init__()
+
+        # common networks at beginning
+        self.base = base_type( 
+                        last_activation_func = null_activation,
+                        input_shape = input_shape,
+                        activation_func = activation_func,
+                        hidden_shapes = hidden_shapes,
+                        **kwargs )
+
+        self.activation_func = activation_func
+        module_input_shape = self.base.output_shape
+        self.layers = []
+        self.num_layers = num_layers
+        self.num_modules = num_modules
+        self.greedy_epsilon = 1.0 #will be set from outside
+        # modularized main network
+        for i in range(num_layers):
+            layer_modules = []
+            for j in range( num_modules ):
+                fc = nn.Linear(module_input_shape, module_hidden)
+                module_hidden_init_func(fc)
+                if add_bn:
+                    module = nn.Sequential(
+                        nn.BatchNorm1d(module_input_shape),
+                        fc,
+                        nn.BatchNorm1d(module_hidden)
+                    )
+                else:
+                    module = fc
+
+                layer_modules.append(module)
+                self.__setattr__("module_{}_{}".format(i,j), module)
+
+            module_input_shape = module_hidden
+            self.layers.append(layer_modules)
+
+        # last common layer, output_shape = action_space_dim * 2(mean/var)
+        self.last = nn.Linear(module_input_shape, output_shape)
+        last_init_func( self.last )
+        print(self.parameters)
+
+    def forward(self, x, selects, final_select, return_weights = False):
+        out = self.base(x) # common base layer.
+        # run forward for each module
+        module_outputs = [module(out).unsqueeze(-2) for module in self.layers[0]]
+        for l in range(self.num_layers-1):
+            module_input = torch.cat(module_outputs, dim=-2)
+            module_outputs = []
+            for m in range(self.num_modules):
+                # broadcasting semantics: starting from last dim(hidden_dim),
+                #   either one dim is 1(the selects!) - dim-1
+                #   or have equal dims(the number of modules!) - dim-2
+                #   or be nonexistant: the batch dim
+                out = (selects[l][..., m,:].unsqueeze(-1)*module_input).sum(dim=-2)
+                out = self.layers[l+1][m](self.activation_func(out))
+                # selection is prior to activation.
+                module_outputs.append(out.unsqueeze(-2))
+                
+        out = torch.cat(module_outputs, dim=-2)
+        out = (final_select.unsqueeze(-1)*out).sum(dim=-2)
+        out = self.activation_func(out)
+        out = self.last(out)
+        return out
 
 '''
 router network selects one module from each layer to use.
@@ -511,7 +570,7 @@ class ModularSelectCascadeNet(nn.Module):
             return (out, {"logits":logits, "selects":selects}) #undo stack, without weight plotting
         return out
 
-
+    
 '''
 router network whether or not to use specific module in a layer.
 special options:
@@ -687,7 +746,7 @@ class ModularSparseCondNet(nn.Module):
             for sel_flat in selects_flattened:
                 zratios.append(((sel_flat==0).sum(dim = -1)/sel_flat.shape[-1]).mean(dim=0))
             selects = [layer_select.sum(dim = 0) for layer_select in selects]
-            final_select = final_select.sum(dim = 0) #sum over batch - remaining num_tasks*num_mods
+            final_select = final_select.sum(dim= 0) #sum over batch - remaining num_tasks*num_mods
             return (out, {"zratios": torch.stack(zratios), 
                           "selects":torch.stack(selects),
                           #"selects_flattened": torch.stack(selects_flattened),
@@ -868,13 +927,23 @@ class ModularSparseSimpleCondNet(nn.Module):
 
 '''
 REGION
-Flattened input versions
+Flattened input versions -> 
 '''
+class FlattenNet(Net):
+    def forward(self, input):
+        out = torch.cat(input, dim = -1)
+        return super().forward(out)
+
 class FlattenModularGatedCascadeCondNet(ModularGatedCascadeCondNet):
     def forward(self, input, embedding_input, return_weights = False):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)
 
+class FlattenModularRoutedCascadeNet(ModularRoutedCascadeNet):
+    def forward(self, input, route_input, return_weights = False):
+        out = torch.cat( input, dim = -1 )
+        return super().forward(out, route_input, return_weights = return_weights)
+    
 class FlattenModularSelectCascadeCondNet(ModularSelectCascadeNet):
     def forward(self, input, embedding_input, return_weights = False):
         out = torch.cat( input, dim = -1 )
