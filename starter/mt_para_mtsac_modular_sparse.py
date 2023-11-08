@@ -66,7 +66,7 @@ def experiment(args):
     example_ob = env.reset()
     example_embedding = env.active_task_one_hot
     total_opt_times = params["general_setting"]["num_epochs"]*params["general_setting"]["opt_times"]
-    pf = policies.ModularGuassianSelectCascadeContPolicy(
+    pf = policies.ModularGuassianSparseContPolicy(
         input_shape=env.observation_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=2 * env.action_space.shape[0],cond_ob=True,
@@ -75,12 +75,12 @@ def experiment(args):
     if args.pf_snap is not None:
         pf.load_state_dict(torch.load(args.pf_snap, map_location='cpu'))
 
-    qf1 = networks.FlattenModularSelectCascadeCondNet(
+    qf1 = networks.FlattenModularSparseCondNet(
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1, cond_ob=True,
         **params['net'])
-    qf2 = networks.FlattenModularSelectCascadeCondNet( 
+    qf2 = networks.FlattenModularSparseCondNet( 
         input_shape=env.observation_space.shape[0] + env.action_space.shape[0],
         em_input_shape=np.prod(example_embedding.shape),
         output_shape=1,cond_ob=True,
@@ -113,6 +113,18 @@ def experiment(args):
     epochs = params['general_setting']['pretrain_epochs'] + \
         params['general_setting']['num_epochs'] 
 
+
+    #params['general_setting']['collector'] = AsyncMultiTaskParallelCollectorUniform(
+    #    env=env, pf=pf, replay_buffer=replay_buffer,
+    #    env_cls = cls_dicts, env_args = [params["env"], cls_args, params["meta_env"]],
+    #    device=device,
+    #    reset_idx=True,
+    #    epoch_frames=params['general_setting']['epoch_frames'],
+    #    max_episode_frames=params['general_setting']['max_episode_frames'],
+    #    eval_episodes = params['general_setting']['eval_episodes'],
+    #    worker_nums=args.worker_nums, eval_worker_nums=args.eval_worker_nums,
+    #    train_epochs = epochs, eval_epochs= params['general_setting']['num_epochs']
+    #)
 
     params['general_setting']['collector'] = MultiTaskCollector(
         env=env, pf=pf, replay_buffer=replay_buffer,

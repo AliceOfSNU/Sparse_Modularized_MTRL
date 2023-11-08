@@ -298,7 +298,7 @@ router network selects one module from each layer to use.
 special options:
     - cond_ob : use state information in routing?
 '''
-class ModularSelectCascadeNet(nn.Module):
+class ModularSelectCascadeCondNet(nn.Module):
     def __init__(self, output_shape,
             base_type, em_input_shape, input_shape,
             em_hidden_shapes,
@@ -380,17 +380,20 @@ class ModularSelectCascadeNet(nn.Module):
         self.select_fcs = []
         self.select_cond_fcs = []
 
-        for l in range(num_layers-1):
-            select_cond_fc = nn.Linear(self.num_modules**2, gating_input_shape)
-            module_hidden_init_func(select_cond_fc)
-            self.select_cond_fcs.append(select_cond_fc)
-            self.__setattr__(f"select_cond_fc{l+1}", select_cond_fc)
-
-            select_fc = nn.Linear(gating_input_shape, self.num_modules**2)
+        for l in range(1, num_layers):
+            # outputs selection logits
+            select_fc = nn.Linear(gating_input_shape, self.num_modules)
             module_hidden_init_func(select_fc)
             self.select_fcs.append(select_fc)
-            self.__setattr__(f"select_fc_{l+1}", select_fc)
+            self.__setattr__(f"select_fc_{l}", select_fc)
+            
+            #condition on previous selection of module
+            select_cond_fc = nn.Linear(l*self.num_modules, gating_input_shape)
+            module_hidden_init_func(select_cond_fc)
+            self.select_cond_fcs.append(select_cond_fc)
+            self.__setattr__(f"select_cond_fc{l}", select_cond_fc)
 
+        # last selecting layer
         select_fc = nn.Linear(gating_input_shape, self.num_modules)
         module_hidden_init_func(select_fc)
         self.select_fcs.append(select_fc)
@@ -424,46 +427,40 @@ class ModularSelectCascadeNet(nn.Module):
         select_input = self.activation_func(embedding)
 
         #if self.deterministic:
-        self.deterministic= False
+        self.deterministic = False
         if self.deterministic:
             for i in range(self.num_layers-1):
-                logit = self.select_fcs[i](select_input) #last dim is num_modules**2
-                logit = F.softmax(logit)
+                logit = self.select_fcs[i](select_input)
+                logit = torch.softmax(logit, -1)
+                logits.append(logit)
 
-                select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
-                logits.append(select)
-
-                # v1: select = choose maximum!!
-                #max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
-                #select = torch.zeros_like(select)
-                #select.scatter_(dim = -1, index = max_select_idx, value = 1)
-
-                # v2: select = hard sampling
-                select = F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1)
-
+                # greedy: choose maximum!!
+                max_select_idx = torch.argmax(logit, dim=-1, keepdim=True)
+                select = torch.zeros_like(select)
+                select.scatter_(dim = -1, index = max_select_idx, value = 1)
+                select = F.one_hot(max_select_idx, num_classes = self.num_modules)
                 selects.append(select)
-                select_input = self.select_cond_fcs[i](logit)
+                flattened_selects = torch.cat(selects, dim=-1) # batch_dim x task x n_modules*n_layers
+                
+                select_input = self.select_cond_fcs[i](flattened_selects)
                 select_input = select_input*embedding
                 select_input = self.activation_func(select_input)
 
-            final_select = self.select_fcs[self.num_layers-1](select_input)
-
-            # v1: select = choose maximum!!
-            #max_select_idx = torch.argmax(select, dim=-1, keepdim=True)
-            #select = torch.zeros_like(select)
-            #select.scatter_(dim = -1, index = max_select_idx, value = 1)
-
-            # v2: select = hard sampling
-            final_select = F.gumbel_softmax(final_select, tau=self.select_temp, hard=False, dim=-1)
-
+            final_logits = self.select_fcs[-1](select_input)
+            final_logits = torch.softmax(final_logits, -1)
+            
+            # greedy = choose maximum!!
+            max_select_idx = torch.argmax(final_logits, dim=-1, keepdim=True)
+            final_select = torch.zeros_like(select)
+            final_select.scatter_(dim = -1, index = max_select_idx, value = 1)
+            final_select = F.one_hot(max_select_idx, num_classes=self.num_modules)
         else:
             for i in range(self.num_layers-1):
                 logit = self.select_fcs[i](select_input) #last dim is num_modules**2
-                select = logit.view([*logit.shape[:-1], self.num_modules, self.num_modules])
-                #select *= 1/self.select_temp # temperature annealing for hard module
-                logits.append(select)
-                select = torch.softmax(select,dim=-1)
-                #logit_select = logit + self.select_daesaturation * torch.max(logit).detach().item()
+                logits.append(logit)
+                # I tried several activations: Tanh, Relu, None, and Softmax
+                # softmax gets applied in the gumbel sampling step, but anyways.
+                logit = torch.softmax(logit,dim=-1)
                 
                 '''
                 Gumbel-Softmax
@@ -475,39 +472,33 @@ class ModularSelectCascadeNet(nn.Module):
                 expecting the logits to trained to become peaked -> because even sampling of modules is likely to be bad.
                 scheduling from 1.0 to 0.02.
                 '''
-                selects.append(F.gumbel_softmax(select, tau=self.select_temp, hard=False, dim=-1))
-                select_input = self.select_cond_fcs[i](logit)
+                selects.append(F.gumbel_softmax(logit, tau=self.select_temp, hard=True, dim=-1))
+                flattened_selects = torch.cat(selects, dim=-1) # batch_dim x task x n_modules*n_layers
+                select_input = self.select_cond_fcs[i](flattened_selects)
                 select_input = select_input*embedding
                 select_input = self.activation_func(select_input)
 
-            final_select = self.select_fcs[self.num_layers-1](select_input)
-            final_select = F.gumbel_softmax(final_select, tau=self.select_temp, hard=False, dim=-1)
+            final_select = self.select_fcs[-1](select_input)
+            final_select = F.gumbel_softmax(final_select, tau=self.select_temp, hard=True, dim=-1)
+            selects.append(final_select)
 
         # run forward for each module
-        module_outputs = [self.activation_func(module(out)).unsqueeze(-2) for module in self.layers[0]]
-        for l in range(self.num_layers-1):
+        for l in range(self.num_layers):
+            module_outputs = [module(out).unsqueeze(-2) for module in self.layers[l]]
             module_input = torch.cat(module_outputs, dim=-2)
-            module_outputs = []
-            for m in range(self.num_modules):
-                # broadcasting semantics: starting from last dim(hidden_dim),
-                #   either one dim is 1(the selects!) - dim-1
-                #   or have equal dims(the number of modules!) - dim-2
-                #   or be nonexistant: the batch dim
-                out = (selects[l][..., m,:].unsqueeze(-1)*module_input).sum(dim=-2)
-                out = self.layers[l+1][m](self.activation_func(out))
-                # selection is prior to activation.
-                module_outputs.append(out.unsqueeze(-2))
+            # gather by weights
+            out = (selects[l].unsqueeze(-1)*module_input).sum(dim=-2)
+            # selection is prior to activation.
+            out = self.activation_func(out)
                 
-        out = torch.cat(module_outputs, dim=-2)
-        out = (final_select.unsqueeze(-1)*out).sum(dim=-2)
+        # ->8
+        # no last layer activation
         out = self.last(out)
-        
 
         # return the weights?
         if return_weights:
-            #logits = [layer_logit.mean(dim = 0).softmax(dim=-1) for layer_logit in logits]
-            logits = [layer_logit.mean(dim = 0) for layer_logit in logits]
-            selects = [layer_select.sum(dim = 0) for layer_select in selects]
+            logits = torch.stack(logits)
+            selects = torch.stack(selects)
             return (out, {"logits":logits, "selects":selects}) #undo stack, without weight plotting
         return out
 
@@ -875,7 +866,7 @@ class FlattenModularGatedCascadeCondNet(ModularGatedCascadeCondNet):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)
 
-class FlattenModularSelectCascadeCondNet(ModularSelectCascadeNet):
+class FlattenModularSelectCascadeCondNet(ModularSelectCascadeCondNet):
     def forward(self, input, embedding_input, return_weights = False):
         out = torch.cat( input, dim = -1 )
         return super().forward(out, embedding_input, return_weights = return_weights)

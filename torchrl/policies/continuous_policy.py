@@ -352,7 +352,7 @@ class ModularGuassianGatedCascadeCondContPolicy(networks.ModularGatedCascadeCond
         return dic
     
 
-class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeNet, EmbeddingGuassianContPolicyBase):
+class ModularGuassianSelectCascadeContPolicy(networks.ModularSelectCascadeCondNet, EmbeddingGuassianContPolicyBase):
     def forward(self, x, embedding_input, return_weights = False ):
         x = super().forward(x, embedding_input, return_weights = return_weights)
         if isinstance(x, tuple):
